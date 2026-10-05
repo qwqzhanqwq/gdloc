@@ -27,7 +27,18 @@ gdloc [路径] [--version]
 - 文件末尾的换行符不产生额外一行；空文件 0 行；只有一个换行符的文件为 1 个空行。
 - 读取时去掉开头的 UTF-8 BOM，兼容 `\n` 与 `\r\n`，末行无换行符也计入。
 
+### Godot Shader（`.gdshader`、`.gdshaderinc`，阶段 2）
+
+- 单行注释 `//`，多行注释 `/* ... */`（不嵌套）。
+- `/** ... */` 是文档注释：覆盖的注释行同时计入 Comments 和 Doc；空的 `/**/` 不算文档注释。
+- 预处理指令（`#include`、`#define`、`#ifdef`、`#endif` 等）计为代码行，不是注释。
+- 字符串 `"..."` 内的 `//`、`/*` 不触发注释判定（`#include`、`hint_enum` 等均可能含字符串）。
+- 块注释内部的纯空白行计为空行；未闭合的块注释延续到文件末尾，其余内容按注释计。
+- 空文件、BOM、CRLF、末行无换行的处理同 GDScript。
+
 ## 与 scc 的差异
+
+### GDScript
 
 以 `D:\WindupWonderland\src` 为样本（115 个 `.gd` 文件）：
 
@@ -40,3 +51,17 @@ gdloc [路径] [--version]
 | Blanks | 2,992 | 2,988 |
 
 差异仅来自 `addons/ww_water/baker/river_baker.gd` 的第 75、78、80、1120 行：这些是多行字符串（`"""..."""`）内部的纯空白行。gdloc 按"只含空白字符即空行"（含多行字符串内部）计为空行，scc 把字符串内部的行一律计为代码。gdloc 的行为与 AGENTS.md 4.1 一致。
+
+### Shader
+
+以 `D:\WindupWonderland\src` 为样本（17 个 `.gdshader` / `.gdshaderinc` 文件，目录内无 `.glsl`）：
+
+| 指标 | gdloc | scc (GLSL) |
+|---|---|---|
+| Files | 17 | 17 |
+| Lines | 1,358 | 1,358 |
+| Code | 891 | 891 |
+| Comments | 287 | 287 |
+| Blanks | 180 | 180 |
+
+逐文件对比 0 差异。scc 的 GLSL 组在这份样本里恰好只包含这 17 个 `.gdshader` 文件（无原生 `.glsl`），因此完全一致。

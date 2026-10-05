@@ -68,15 +68,16 @@ func main() {
 		os.Exit(2)
 	}
 	printGrouped(entries)
-	printGDScriptSummary(root, entries)
+	printLangSummary("GDScript", scan.TypeGDScript, root, entries, counter.CountGDScript)
+	printLangSummary("Shader", scan.TypeShader, root, entries, counter.CountShader)
 }
 
-// printGDScriptSummary 统计并输出 GDScript 汇总，读取失败只警告不中断。
-func printGDScriptSummary(root string, entries []scan.FileEntry) {
+// printLangSummary 汇总某一类型文件的计数，读取失败只警告不中断。
+func printLangSummary(label string, t scan.FileType, root string, entries []scan.FileEntry, count func(string) counter.Result) {
 	var total counter.Result
 	files := 0
 	for _, e := range entries {
-		if e.Type != scan.TypeGDScript {
+		if e.Type != t {
 			continue
 		}
 		files++
@@ -85,15 +86,15 @@ func printGDScriptSummary(root string, entries []scan.FileEntry) {
 			fmt.Fprintf(os.Stderr, "warning: cannot read %q: %v\n", e.Path, err)
 			continue
 		}
-		r := counter.CountGDScript(string(data))
+		r := count(string(data))
 		total.Lines += r.Lines
 		total.Code += r.Code
 		total.Comments += r.Comments
 		total.Doc += r.Doc
 		total.Blanks += r.Blanks
 	}
-	fmt.Printf("GDScript summary: files=%d lines=%d code=%d comments=%d doc=%d blanks=%d\n",
-		files, total.Lines, total.Code, total.Comments, total.Doc, total.Blanks)
+	fmt.Printf("%s summary: files=%d lines=%d code=%d comments=%d doc=%d blanks=%d\n",
+		label, files, total.Lines, total.Code, total.Comments, total.Doc, total.Blanks)
 }
 
 // printGrouped 按类型分组列出识别到的文件，末尾输出未识别文件数。
