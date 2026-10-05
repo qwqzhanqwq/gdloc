@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"sort"
 
-	"gdloc/internal/counter"
-	"gdloc/internal/godot"
-	"gdloc/internal/scan"
-	"gdloc/internal/stats"
+	"github.com/qwqzhanqwq/gdloc/internal/counter"
+	"github.com/qwqzhanqwq/gdloc/internal/godot"
+	"github.com/qwqzhanqwq/gdloc/internal/scan"
+	"github.com/qwqzhanqwq/gdloc/internal/stats"
 )
 
 // FileStat 是单个已统计单元的结果；内嵌代码的 Path 形如 "scene.tscn::id"。

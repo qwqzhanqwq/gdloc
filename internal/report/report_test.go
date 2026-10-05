@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gdloc/internal/counter"
-	"gdloc/internal/scan"
+	"github.com/qwqzhanqwq/gdloc/internal/counter"
+	"github.com/qwqzhanqwq/gdloc/internal/scan"
 )
 
 func TestComma(t *testing.T) {

@@ -2,6 +2,16 @@
 
 Godot 4 项目代码行数统计工具（命令行，用 Go 编写）。
 
+## 安装
+
+**下载可执行文件**：在 [Releases](https://github.com/qwqzhanqwq/gdloc/releases) 下载对应平台的压缩包（Windows 为 `.zip`，macOS / Linux 为 `.tar.gz`），解压后把 `gdloc` 放到 `PATH` 中的目录。
+
+**用 Go 安装**（需要 Go 1.25+）：
+
+```sh
+go install github.com/qwqzhanqwq/gdloc/cmd/gdloc@latest
+```
+
 ## 构建
 
 ```sh
@@ -187,3 +197,11 @@ scc 的 "Godot Scene" **只统计 `.tscn`**（Windup 有 12 个 `.tres` 但未�
 | `D:\Godot\flipped-sky` | 15 | 15 | 3,254 | 3,254 |
 
 `.tscn` 的 Files 与 Lines 完全一致。`.tres` 没有对应的 scc 组（scc 不计入 Godot Scene），gdloc 单独列为 Resource：Windup `12 / 187`，另两个项目为 0。三个真实项目均无内嵌 GDScript / Shader（`script/source` 与 `type="Shader"` 命中数为 0），故表格中无 `(embedded)` 行。
+
+## 发布
+
+推送 `v*` 形式的 tag（如 `v0.1.0`）后，GitHub Actions 用 GoReleaser 编译 Windows / macOS / Linux 的 amd64 与 arm64 版本并发布到 Releases，配置见 `.goreleaser.yaml` 与 `.github/workflows/release.yml`。
+
+## 许可证
+
+MIT，见 [LICENSE](LICENSE)。

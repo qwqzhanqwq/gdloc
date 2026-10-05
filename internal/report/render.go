@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"gdloc/internal/counter"
+	"github.com/qwqzhanqwq/gdloc/internal/counter"
 )
 
 // Mode 决定输出形态。

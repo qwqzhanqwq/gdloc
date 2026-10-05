@@ -1,4 +1,4 @@
-module gdloc
+module github.com/qwqzhanqwq/gdloc
 
 go 1.25.0
 

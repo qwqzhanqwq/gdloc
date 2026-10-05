@@ -4,9 +4,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"gdloc/internal/counter"
-	"gdloc/internal/godot"
-	"gdloc/internal/scan"
+	"github.com/qwqzhanqwq/gdloc/internal/counter"
+	"github.com/qwqzhanqwq/gdloc/internal/godot"
+	"github.com/qwqzhanqwq/gdloc/internal/scan"
 )
 
 func TestGroupByDir(t *testing.T) {

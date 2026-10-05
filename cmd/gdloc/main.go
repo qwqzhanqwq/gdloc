@@ -7,15 +7,25 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
-	"gdloc/internal/godot"
-	"gdloc/internal/report"
-	"gdloc/internal/scan"
+	"github.com/qwqzhanqwq/gdloc/internal/godot"
+	"github.com/qwqzhanqwq/gdloc/internal/report"
+	"github.com/qwqzhanqwq/gdloc/internal/scan"
 )
 
 // version 默认版本号，可通过 -ldflags "-X main.version=..." 覆盖。
 var version = "0.0.1-dev"
+
+func init() {
+	// go install ...@vX.Y.Z 不经过 ldflags，从模块信息里取版本号。
+	if info, ok := debug.ReadBuildInfo(); ok && version == "0.0.1-dev" {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			version = strings.TrimPrefix(v, "v")
+		}
+	}
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))

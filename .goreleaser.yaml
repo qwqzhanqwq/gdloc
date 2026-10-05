@@ -1,0 +1,46 @@
+# GoReleaser v2 配置：推送 v* tag 后由 .github/workflows/release.yml 调用。
+version: 2
+
+project_name: gdloc
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: gdloc
+    main: ./cmd/gdloc
+    binary: gdloc
+    env:
+      # 纯 Go，关掉 cgo 才能稳定交叉编译出静态二进制。
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: gdloc
+    formats: [tar.gz]
+    # Scoop 与 winget 只接受 zip。
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc

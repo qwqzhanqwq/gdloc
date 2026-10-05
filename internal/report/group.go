@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"gdloc/internal/godot"
+	"github.com/qwqzhanqwq/gdloc/internal/godot"
 )
 
 // GroupByDir 按扫描根目录下的顶层目录分组，根目录下的文件归入 "(root)"。

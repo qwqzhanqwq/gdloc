@@ -7,7 +7,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gdloc/internal/counter"
+	"github.com/qwqzhanqwq/gdloc/internal/counter"
 )
 
 // Unit 是一段待统计的源码（普通文件或 tscn/tres 内嵌块）。
