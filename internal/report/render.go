@@ -23,6 +23,8 @@ const (
 	ModeAddon
 	// ModeDir 按顶层目录分组。
 	ModeDir
+	// ModeStats 进阶统计。
+	ModeStats
 )
 
 // WriteTable 输出表格；top>0 时截断显示行数（Total 仍按全部计算）。
@@ -38,6 +40,8 @@ func WriteTable(w io.Writer, rep Report, mode Mode, top int) {
 		writeAddonTable(w, rep, top)
 	case ModeDir:
 		writeDirTable(w, rep, top)
+	case ModeStats:
+		writeStatsTable(w, rep)
 	default:
 		writeLangTable(w, rep, top)
 	}
@@ -127,6 +131,40 @@ func writeDirTable(w io.Writer, rep Report, top int) {
 	rows = append(rows, totalRow(rep.Total.Language, rep.Total.Files, rep.Total.Result))
 	all := append([][]string{header}, rows...)
 	writeLines(w, all, columnWidths(all), 1)
+}
+
+func writeStatsTable(w io.Writer, rep Report) {
+	if rep.Stats == nil {
+		return
+	}
+	st := rep.Stats
+
+	fmt.Fprintln(w, "Comment analysis (suspected commented-out code is a heuristic estimate):")
+	rows := [][]string{{"Language", "Comments", "Suspected", "Ratio"}}
+	for _, l := range st.Languages {
+		rows = append(rows, []string{l.Language, comma(l.Comments), comma(l.Suspected), fmt.Sprintf("%.1f%%", l.Ratio()*100)})
+	}
+	writeLines(w, rows, columnWidths(rows), 1)
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "GDScript structure:")
+	fmt.Fprintf(w, "funcs: %d  signals: %d  class_names: %d  exports: %d\n\n",
+		st.Structure.Funcs, st.Structure.Signals, st.Structure.ClassNames, st.Structure.Exports)
+
+	fmt.Fprintln(w, "Longest files by code lines:")
+	frows := [][]string{{"Path", "Language", "Code"}}
+	for _, f := range st.LongestFiles {
+		frows = append(frows, []string{f.Path, f.Language, comma(f.Code)})
+	}
+	writeLines(w, frows, columnWidths(frows), 2)
+	fmt.Fprintln(w)
+
+	fmt.Fprintln(w, "Longest GDScript functions:")
+	fns := [][]string{{"Location", "Function", "Lines"}}
+	for _, f := range st.LongestFuncs {
+		fns = append(fns, []string{fmt.Sprintf("%s:%d", f.Path, f.Line), f.Name, comma(f.Length)})
+	}
+	writeLines(w, fns, columnWidths(fns), 2)
 }
 
 func langRow(ls LangStat) []string {
@@ -228,6 +266,40 @@ type jsonSection struct {
 	Lines int `json:"lines"`
 }
 
+type jsonStats struct {
+	Languages        []jsonStatsLang `json:"languages"`
+	Structure        jsonStatsStruct `json:"structure"`
+	LongestFiles     []jsonStatsFile `json:"longest_files"`
+	LongestFunctions []jsonStatsFunc `json:"longest_functions"`
+}
+
+type jsonStatsLang struct {
+	Language  string  `json:"language"`
+	Comments  int     `json:"comments"`
+	Suspected int     `json:"suspected"`
+	Ratio     float64 `json:"ratio"`
+}
+
+type jsonStatsStruct struct {
+	Funcs      int `json:"funcs"`
+	Signals    int `json:"signals"`
+	ClassNames int `json:"class_names"`
+	Exports    int `json:"exports"`
+}
+
+type jsonStatsFile struct {
+	Path     string `json:"path"`
+	Language string `json:"language"`
+	Code     int    `json:"code"`
+}
+
+type jsonStatsFunc struct {
+	Path   string `json:"path"`
+	Line   int    `json:"line"`
+	Name   string `json:"name"`
+	Length int    `json:"length"`
+}
+
 type jsonAddon struct {
 	Name         string `json:"name"`
 	Dir          string `json:"dir"`
@@ -262,6 +334,7 @@ type jsonReport struct {
 	Addons        []jsonAddon `json:"addons,omitempty"`
 	Dirs          []jsonDir   `json:"dirs,omitempty"`
 	Files         []jsonFile  `json:"files,omitempty"`
+	Stats         *jsonStats  `json:"stats,omitempty"`
 }
 
 func toJSONLang(ls LangStat) jsonLang {
@@ -325,6 +398,30 @@ func WriteJSON(w io.Writer, rep Report, mode Mode, top int) {
 				Comments: g.Result.Comments, Doc: g.Result.Doc, Blanks: g.Result.Blanks,
 			})
 		}
+	}
+
+	if rep.Stats != nil {
+		js := &jsonStats{
+			Structure: jsonStatsStruct{
+				Funcs: rep.Stats.Structure.Funcs, Signals: rep.Stats.Structure.Signals,
+				ClassNames: rep.Stats.Structure.ClassNames, Exports: rep.Stats.Structure.Exports,
+			},
+			Languages:        []jsonStatsLang{},
+			LongestFiles:     []jsonStatsFile{},
+			LongestFunctions: []jsonStatsFunc{},
+		}
+		for _, l := range rep.Stats.Languages {
+			js.Languages = append(js.Languages, jsonStatsLang{
+				Language: l.Language, Comments: l.Comments, Suspected: l.Suspected, Ratio: l.Ratio(),
+			})
+		}
+		for _, f := range rep.Stats.LongestFiles {
+			js.LongestFiles = append(js.LongestFiles, jsonStatsFile{Path: f.Path, Language: f.Language, Code: f.Code})
+		}
+		for _, f := range rep.Stats.LongestFuncs {
+			js.LongestFunctions = append(js.LongestFunctions, jsonStatsFunc{Path: f.Path, Line: f.Line, Name: f.Name, Length: f.Length})
+		}
+		out.Stats = js
 	}
 
 	enc := json.NewEncoder(w)

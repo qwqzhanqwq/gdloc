@@ -255,3 +255,53 @@ func TestByAddonJSON(t *testing.T) {
 		t.Errorf("plugin not in JSON addons: %s", out.String())
 	}
 }
+
+func TestStatsMutuallyExclusive(t *testing.T) {
+	for _, argv := range [][]string{
+		{samplePath(), "--stats", "--by-file"},
+		{samplePath(), "--stats", "--by-dir"},
+		{samplePath(), "--stats", "--by-addon"},
+	} {
+		var out, errOut bytes.Buffer
+		if code := run(argv, &out, &errOut); code != 1 {
+			t.Errorf("run(%v) = %d, want 1", argv, code)
+		}
+	}
+}
+
+func TestStatsOutput(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := run([]string{samplePath(), "--stats"}, &out, &errOut); code != 0 {
+		t.Fatalf("run = %d, stderr=%s", code, errOut.String())
+	}
+	s := out.String()
+	for _, want := range []string{"Comment analysis", "GDScript structure", "Longest files", "Longest GDScript functions"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("stats output missing %q:\n%s", want, s)
+		}
+	}
+}
+
+func TestStatsJSON(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if code := run([]string{samplePath(), "--stats", "--json"}, &out, &errOut); code != 0 {
+		t.Fatalf("run = %d", code)
+	}
+	var got struct {
+		Stats struct {
+			Languages []struct {
+				Language string `json:"language"`
+			} `json:"languages"`
+			Structure struct {
+				Funcs int `json:"funcs"`
+			} `json:"structure"`
+			LongestFiles []json.RawMessage `json:"longest_files"`
+		} `json:"stats"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("json: %v\n%s", err, out.String())
+	}
+	if len(got.Stats.Languages) == 0 || len(got.Stats.LongestFiles) == 0 {
+		t.Errorf("stats json incomplete: %s", out.String())
+	}
+}

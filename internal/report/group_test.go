@@ -70,7 +70,7 @@ func TestGroupInvariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep := Build(root, entries, nil)
+	rep := Build(root, entries, nil, false, 0)
 
 	for _, tc := range []struct {
 		name   string

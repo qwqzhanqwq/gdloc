@@ -36,6 +36,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		byFile        bool
 		byDir         bool
 		byAddon       bool
+		statsView     bool
 		excludeAddons bool
 		sortKey       string
 		top           int
@@ -46,6 +47,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&byFile, "by-file", false, "list one row per file")
 	fs.BoolVar(&byDir, "by-dir", false, "group by top-level directory")
 	fs.BoolVar(&byAddon, "by-addon", false, "group by addon plugin")
+	fs.BoolVar(&statsView, "stats", false, "advanced statistics view")
 	fs.BoolVar(&excludeAddons, "exclude-addons", false, "do not count the addons/ directory")
 	fs.StringVar(&sortKey, "sort", "code", "sort key: code|comments|blanks|lines|files")
 	fs.IntVar(&top, "top", 0, "show only the first N rows")
@@ -98,6 +100,10 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: --by-file, --by-dir and --by-addon are mutually exclusive")
 		return 1
 	}
+	if statsView && modes > 0 {
+		fmt.Fprintln(stderr, "error: --stats cannot be combined with --by-file, --by-dir or --by-addon")
+		return 1
+	}
 	if excludeAddons && byAddon {
 		fmt.Fprintln(stderr, "error: --exclude-addons cannot be used with --by-addon")
 		return 1
@@ -134,7 +140,11 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	rep := report.Build(rootAbs, entries, stderr)
+	statsTop := top
+	if statsTop == 0 {
+		statsTop = 10
+	}
+	rep := report.Build(rootAbs, entries, stderr, statsView, statsTop)
 	if name, ok := godot.FindProjectName(rootAbs); ok {
 		rep.ProjectName = name
 	}
@@ -150,6 +160,8 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		mode = report.ModeAddon
 		plugins := godot.ScanPlugins(addonsDir, stderr)
 		rep.Groups = report.GroupByAddon(rep, rootAbs, addonsDir, plugins)
+	case statsView:
+		mode = report.ModeStats
 	}
 	rep.SortBy(sortKey)
 

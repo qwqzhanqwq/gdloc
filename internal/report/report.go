@@ -11,6 +11,7 @@ import (
 	"gdloc/internal/counter"
 	"gdloc/internal/godot"
 	"gdloc/internal/scan"
+	"gdloc/internal/stats"
 )
 
 // FileStat 是单个已统计单元的结果；内嵌代码的 Path 形如 "scene.tscn::id"。
@@ -50,11 +51,13 @@ type Report struct {
 	Files         []FileStat
 	CSharpFiles   int
 	VisualShaders int
+	Stats         *stats.Stats // --stats 视图
 }
 
 // Build 读取并统计各文件的代码行数，读取失败时写入 warn 并继续。
 // GDScript/Shader 单独统计；.tscn/.tres 统计总行数并提取内嵌 GDScript/Shader；C# 只计数文件数。
-func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
+// wantStats 为真时额外做进阶统计（top 为最长列表条数）。
+func Build(root string, entries []scan.FileEntry, warn io.Writer, wantStats bool, statsTop int) Report {
 	rep := Report{
 		Root:      root,
 		Scenes:    LangStat{Language: "Scene"},
@@ -62,6 +65,7 @@ func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
 	}
 	langs := map[string]*LangStat{}
 	embeddedParents := map[string]map[string]bool{}
+	var units []stats.Unit
 
 	read := func(e scan.FileEntry) (string, bool) {
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(e.Path)))
@@ -107,6 +111,9 @@ func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
 			r := counter.CountGDScript(text)
 			addResult("GDScript", r).Files++
 			rep.Files = append(rep.Files, FileStat{Path: e.Path, Language: "GDScript", Result: r})
+			if wantStats {
+				units = append(units, stats.Unit{Path: e.Path, Language: "GDScript", Text: text})
+			}
 		case scan.TypeShader:
 			text, ok := read(e)
 			if !ok {
@@ -115,6 +122,9 @@ func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
 			r := counter.CountShader(text)
 			addResult("Shader", r).Files++
 			rep.Files = append(rep.Files, FileStat{Path: e.Path, Language: "Shader", Result: r})
+			if wantStats {
+				units = append(units, stats.Unit{Path: e.Path, Language: "Shader", Text: text})
+			}
 		case scan.TypeCSharp:
 			rep.CSharpFiles++
 		case scan.TypeScene, scan.TypeResource:
@@ -146,6 +156,9 @@ func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
 				}
 				addEmbedded(language, e.Path, r)
 				rep.Files = append(rep.Files, FileStat{Path: e.Path + "::" + b.ID, Language: language, Result: r})
+				if wantStats {
+					units = append(units, stats.Unit{Path: e.Path + "::" + b.ID, Language: b.Language, Text: b.Source})
+				}
 			}
 		}
 	}
@@ -171,6 +184,10 @@ func Build(root string, entries []scan.FileEntry, warn io.Writer) Report {
 		rep.Total.Result.Blanks += ls.Result.Blanks
 	}
 	rep.Total.Language = "Total"
+	if wantStats {
+		s := stats.Analyze(units, statsTop)
+		rep.Stats = &s
+	}
 	return rep
 }
 

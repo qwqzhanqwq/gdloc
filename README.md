@@ -22,6 +22,7 @@ gdloc [路径] [选项]
 | `--by-dir` | 按扫描根目录下的顶层目录分组，根目录文件归入 `(root)`；列为 Group / Files / Lines / Code / Comments / Doc / Blanks |
 | `--by-addon` | 按插件分组，非插件文件归入 `(project)`；列为 Addon / Version / Files / Lines / Code / Comments / Doc / Blanks |
 | `--exclude-addons` | 整个 `addons/` 目录不统计；不能与 `--by-addon` 同用 |
+| `--stats` | 进阶统计视图（注释分析、GDScript 结构、最长文件/函数）；不能与 `--by-file` / `--by-dir` / `--by-addon` 同用 |
 | `--sort <列>` | `code`（默认）\| `comments` \| `blanks` \| `lines` \| `files`，降序 |
 | `--top N` | 只显示前 N 行；Total 仍按全部计算 |
 | `--json` | 以 JSON 输出（字段名 snake_case） |
@@ -29,7 +30,7 @@ gdloc [路径] [选项]
 | `--no-ignore` | 不读取 `.gitignore` |
 | `--version` | 显示版本 |
 
-`--by-file`、`--by-dir`、`--by-addon` 三者互斥，同时使用报错退出码 1；`--exclude-addons` 与 `--by-addon` 同用也报错。`--sort` 与 `--top` 对分组结果生效，Total 始终按全部计算。
+`--by-file`、`--by-dir`、`--by-addon` 三者互斥，同时使用报错退出码 1；`--exclude-addons` 与 `--by-addon` 同用也报错；`--stats` 与这三个分组参数互斥。`--sort` 与 `--top` 对分组结果生效，Total 始终按全部计算。
 
 默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。`.tscn`/`.tres` 中提取出的内嵌代码单独列为 `GDScript (embedded)` / `Shader (embedded)`（Files 为含内嵌代码的文件数，内嵌块数量见 `--by-file` 与 JSON），并计入 Total。分隔线下方单独显示 Scene（`.tscn`）与 Resource（`.tres`）的 Files 和 Lines（不计入 Total）。存在 `.cs` 文件或 VisualShader 时，表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
 
@@ -60,7 +61,19 @@ gdloc [路径] [选项]
   "files": [
     {"path": "main.gd", "language": "GDScript", "lines": 24, "code": 20, "comments": 2, "doc": 1, "blanks": 2},
     {"path": "scenes/main.tscn::GDScript_qr1jj", "language": "GDScript (embedded)", "lines": 14, "code": 9, "comments": 2, "doc": 1, "blanks": 3}
-  ]
+  ],
+  "stats": {
+    "languages": [
+      {"language": "GDScript", "comments": 2263, "suspected": 36, "ratio": 0.0159}
+    ],
+    "structure": {"funcs": 1367, "signals": 44, "class_names": 90, "exports": 360},
+    "longest_files": [
+      {"path": "scenes/player/puppet.gd", "language": "GDScript", "code": 1155}
+    ],
+    "longest_functions": [
+      {"path": "addons/ww_water/river_manager.gd", "line": 158, "name": "_get_property_list", "length": 190}
+    ]
+  }
 }
 ```
 
@@ -68,7 +81,8 @@ gdloc [路径] [选项]
 - `total` 汇总代码类语言；`scenes` / `resources` 单独给出 Files 与 Lines，不计入 `total`。
 - `visual_shaders` 为 VisualShader 资源数量。
 - `addons` 仅在 `--by-addon` 时出现（含 `name` / `dir` / `version` / `has_plugin_cfg` 与各项计数）；`dirs` 仅在 `--by-dir` 时出现。
-- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `addons` / `dirs` / `files` 数组，但 `total` 始终是全量。
+- `stats` 仅在 `--stats` 时出现，含注释分析（`comments` / `suspected` / `ratio`）、`structure`、`longest_files`（`path` / `language` / `code`）、`longest_functions`（`path` / `line` / `name` / `length`）。
+- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `addons` / `dirs` / `files` / `stats.longest_*` 数组，但 `total` 始终是全量。
 
 ## 扫描与排除
 
@@ -108,6 +122,24 @@ gdloc [路径] [选项]
   - `[gd_resource type="Shader" ...]` 的 `[resource]` 段 `code` → `Shader (embedded)`（主资源为 Shader 的 `.tres`）。
 - 字符串值支持真实换行与 `\n` 转义两种存储，`\"`、`\\` 等按 Godot 规则反转义。
 - `VisualShader` 资源只计数量，不计行数。
+
+## 进阶统计（`--stats`）
+
+默认表格与其它输出不变，以下内容只在 `--stats` 视图出现。内嵌代码一并计入，路径用 `文件::id`；`--exclude-dir`、`--exclude-addons` 同样生效；最长列表条数由 `--top` 控制（默认 10）。
+
+- **注释分析**：按语言给出注释行数、疑似"被注释掉的代码"行数及占比。
+- **GDScript 结构**：`func`（含 `static func`，不含匿名 `func(...)`）、`signal`、`class_name`、`@export`（含 `@export_range` 等变体）数量。
+- **最长文件**：代码行数最多的文件前 N 个。
+- **最长函数**：GDScript 函数按长度（从 `func` 行到函数体结束的代码行数，以缩进判断结束，空行与注释行不计入长度）排序，输出 `路径:行号 函数名 长度`。
+
+### 疑似被注释掉的代码（启发式估算）
+
+**这是估算，不是精确判断。** 只考察普通注释行（不含文档注释、`#region`/`#endregion`）。去掉注释符号与首尾空白后：
+
+- 含中文（CJK）字符的注释一律不算。
+- 以 `TODO`、`FIXME`、`NOTE`、`HACK` 开头的不算。
+- GDScript 满足以下任一即视为疑似：以 `func`、`var`、`const`、`if`、`elif`、`else`、`for`、`while`、`match`、`return`、`await`、`pass`、`extends`、`class_name`、`signal`、`@export`、`@onready` 开头；或以 `)` / `:` 结尾；或包含 `" = "`。
+- Shader 满足以下任一即视为疑似：以 `uniform`、`void`、`float`、`int`、`vec2`、`vec3`、`vec4`、`if`、`return` 开头；或以 `;` 结尾。
 
 ## 与 scc 的差异
 

@@ -182,7 +182,7 @@ func TestBuildSample(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep := Build(root, entries, nil)
+	rep := Build(root, entries, nil, false, 0)
 	if rep.CSharpFiles != 1 {
 		t.Errorf("CSharpFiles = %d, want 1", rep.CSharpFiles)
 	}
@@ -204,7 +204,7 @@ func TestBuildEmbedded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep := Build(root, entries, nil)
+	rep := Build(root, entries, nil, false, 0)
 	byLang := map[string]LangStat{}
 	for _, l := range rep.Languages {
 		byLang[l.Language] = l

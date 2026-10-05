@@ -13,6 +13,29 @@ type Result struct {
 	Blanks   int
 }
 
+// LineKind 是单行的归类。
+type LineKind int
+
+const (
+	// LineBlank 空行。
+	LineBlank LineKind = iota
+	// LineCode 代码行。
+	LineCode
+	// LineComment 普通注释行。
+	LineComment
+	// LineDoc 文档注释行。
+	LineDoc
+)
+
+// Line 是逐行扫描结果。Code 为屏蔽字符串与注释后的代码文本；
+// Comment 为原始注释文本（含注释符号），仅注释/文档行有意义；Indent 为前导空白字符数。
+type Line struct {
+	Kind    LineKind
+	Code    string
+	Comment string
+	Indent  int
+}
+
 // CountLines 只统计文本的总行数（用于 Scene/Resource），规则同 CountGDScript 的行数定义。
 func CountLines(text string) int {
 	return len(splitLines(strings.TrimPrefix(text, "\ufeff")))
@@ -20,45 +43,64 @@ func CountLines(text string) int {
 
 // CountGDScript 统计 GDScript 文本，规则见 AGENTS.md 4.1、4.2。
 func CountGDScript(text string) Result {
-	text = strings.TrimPrefix(text, "\ufeff")
-	lines := splitLines(text)
+	return summarize(GDScriptLines(text))
+}
+
+// GDScriptLines 逐行扫描 GDScript，返回每行的归类与屏蔽字符串后的代码文本。
+func GDScriptLines(text string) []Line {
+	raw := splitLines(strings.TrimPrefix(text, "\ufeff"))
+	out := make([]Line, len(raw))
+	inTriple := false
+	var quote byte
+	for i, line := range raw {
+		if strings.TrimSpace(line) == "" {
+			out[i] = Line{Kind: LineBlank, Indent: indentWidth(line)}
+			continue
+		}
+		code, doc, masked, comment, ni, nq := scanGDScriptLine(line, inTriple, quote)
+		inTriple, quote = ni, nq
+		kind := LineComment
+		if code {
+			kind = LineCode
+		} else if doc {
+			kind = LineDoc
+		}
+		out[i] = Line{Kind: kind, Code: masked, Comment: comment, Indent: indentWidth(line)}
+	}
+	return out
+}
+
+func summarize(lines []Line) Result {
 	var r Result
 	r.Lines = len(lines)
-
-	// 跨行状态只有三引号多行字符串。
-	inTriple := false
-	var tripleQuote byte
-
-	for _, line := range lines {
-		// 空行（含只含 \r 的 CRLF 行）优先归为空行，且不改变三引号状态。
-		if strings.TrimSpace(line) == "" {
+	for _, ln := range lines {
+		switch ln.Kind {
+		case LineBlank:
 			r.Blanks++
-			continue
-		}
-		code, doc, inTriple2, q2 := scanLine(line, inTriple, tripleQuote)
-		inTriple, tripleQuote = inTriple2, q2
-		if code {
+		case LineCode:
 			r.Code++
-			continue
-		}
-		r.Comments++
-		if doc {
+		case LineDoc:
+			r.Comments++
 			r.Doc++
+		default:
+			r.Comments++
 		}
 	}
 	return r
 }
 
-// scanLine 扫描单行，返回该行是否含代码、是否为文档注释，以及行末的三引号状态。
-// 单/双引号串不跨行，行末即结束；只有三引号串会把状态带到下一行。
-func scanLine(line string, inTriple bool, tripleQuote byte) (code, doc, nextInTriple bool, nextQuote byte) {
+// scanGDScriptLine 扫描单行，返回是否含代码、是否文档注释、屏蔽后的代码、注释原文，以及行末三引号状态。
+func scanGDScriptLine(line string, inTriple bool, tripleQuote byte) (code, doc bool, masked, comment string, nextInTriple bool, nextQuote byte) {
+	out := make([]byte, len(line))
+	for i := range out {
+		out[i] = ' '
+	}
 	nextInTriple, nextQuote = inTriple, tripleQuote
 	n := len(line)
 	for i := 0; i < n; {
 		if nextInTriple {
 			code = true
 			c := line[i]
-			// 反斜杠转义下一字符；raw 与非 raw 在字符串边界上等价，无需区分。
 			if c == '\\' {
 				i += 2
 				continue
@@ -71,15 +113,14 @@ func scanLine(line string, inTriple bool, tripleQuote byte) (code, doc, nextInTr
 			i++
 			continue
 		}
-
 		switch c := line[i]; {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '#':
-			// 行首（忽略缩进）为 ## 的注释行计为文档注释。
 			if !code && i+1 < n && line[i+1] == '#' {
 				doc = true
 			}
+			comment = line[i:]
 			i = n
 		case c == '"' || c == '\'':
 			code = true
@@ -102,11 +143,21 @@ func scanLine(line string, inTriple bool, tripleQuote byte) (code, doc, nextInTr
 				i++
 			}
 		default:
+			out[i] = line[i]
 			code = true
 			i++
 		}
 	}
-	return code, doc, nextInTriple, nextQuote
+	return code, doc, string(out), comment, nextInTriple, nextQuote
+}
+
+// indentWidth 统计前导空格与制表符数量。
+func indentWidth(line string) int {
+	n := 0
+	for n < len(line) && (line[n] == ' ' || line[n] == '\t') {
+		n++
+	}
+	return n
 }
 
 // splitLines 按 \n 切分并兼容 CRLF；末尾单个换行不产生额外一行，空文本为 0 行。
