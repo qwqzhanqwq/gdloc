@@ -1,0 +1,22 @@
+[gd_scene format=3]
+
+[sub_resource type="Shader" id="Shader_4rye0"]
+code = "/**
+ * Doc comment for the shader.
+ */
+shader_type canvas_item;
+
+// A line comment.
+uniform int mode : hint_enum(\"A\", \"B\") = 0;
+
+void fragment() {
+	COLOR = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_0x3s3"]
+shader = SubResource("Shader_4rye0")
+shader_parameter/mode = null
+
+[node name="ColorRect" type="ColorRect" unique_id=561562108]
+material = SubResource("ShaderMaterial_0x3s3")

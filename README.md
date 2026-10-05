@@ -18,7 +18,7 @@ gdloc [路径] [选项]
 
 | 选项 | 说明 |
 |---|---|
-| `--by-file` | 每个文件一行，列为 Path / Language / Lines / Code / Comments / Doc / Blanks |
+| `--by-file` | 每个文件一行，列为 Path / Language / Lines / Code / Comments / Doc / Blanks；内嵌代码用 `文件::id` 形式（主资源为 `文件::[resource]`） |
 | `--sort <列>` | `code`（默认）\| `comments` \| `blanks` \| `lines` \| `files`，降序 |
 | `--top N` | 只显示前 N 行；Total 仍按全部计算 |
 | `--json` | 以 JSON 输出（字段名 snake_case） |
@@ -26,7 +26,7 @@ gdloc [路径] [选项]
 | `--no-ignore` | 不读取 `.gitignore` |
 | `--version` | 显示版本 |
 
-默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。存在 `.cs` 文件时表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
+默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。`.tscn`/`.tres` 中提取出的内嵌代码单独列为 `GDScript (embedded)` / `Shader (embedded)`（Files 为含内嵌代码的文件数，内嵌块数量见 `--by-file` 与 JSON），并计入 Total。分隔线下方单独显示 Scene（`.tscn`）与 Resource（`.tres`）的 Files 和 Lines（不计入 Total）。存在 `.cs` 文件或 VisualShader 时，表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
 
 退出码：`0` 正常；`1` 参数错误；`2` 路径不存在或不可读。
 
@@ -37,16 +37,25 @@ gdloc [路径] [选项]
   "project_name": "WindupWonderland",
   "root": "D:/WindupWonderland/src",
   "languages": [
-    {"language": "GDScript", "files": 115, "lines": 24927, "code": 19672, "comments": 2263, "doc": 1498, "blanks": 2992}
+    {"language": "GDScript", "files": 115, "blocks": 0, "lines": 24927, "code": 19672, "comments": 2263, "doc": 1498, "blanks": 2992},
+    {"language": "Shader", "files": 17, "blocks": 0, "lines": 1358, "code": 891, "comments": 287, "doc": 160, "blanks": 180},
+    {"language": "GDScript (embedded)", "files": 3, "blocks": 3, "lines": 20, "code": 13, "comments": 4, "doc": 2, "blanks": 3}
   ],
-  "total": {"language": "Total", "files": 132, "lines": 26285, "code": 20563, "comments": 2550, "doc": 1658, "blanks": 3172},
+  "total": {"language": "Total", "files": 132, "blocks": 3, "lines": 26285, "code": 20563, "comments": 2550, "doc": 1658, "blanks": 3172},
+  "scenes": {"files": 35, "lines": 3210},
+  "resources": {"files": 12, "lines": 187},
+  "visual_shaders": 0,
   "files": [
-    {"path": "main.gd", "language": "GDScript", "lines": 24, "code": 20, "comments": 2, "doc": 1, "blanks": 2}
+    {"path": "main.gd", "language": "GDScript", "lines": 24, "code": 20, "comments": 2, "doc": 1, "blanks": 2},
+    {"path": "scenes/main.tscn::GDScript_qr1jj", "language": "GDScript (embedded)", "lines": 14, "code": 9, "comments": 2, "doc": 1, "blanks": 3}
   ]
 }
 ```
 
-`files` 仅在带 `--by-file` 时出现；`--top N` 会截断 `languages` / `files` 数组，但 `total` 始终是全量。
+- `languages` 只含代码类语言（含内嵌），`blocks` 为内嵌块数量；`files` 为含该内嵌代码的文件数。
+- `total` 汇总代码类语言；`scenes` / `resources` 单独给出 Files 与 Lines，不计入 `total`。
+- `visual_shaders` 为 VisualShader 资源数量。
+- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `files` 数组，但 `total` 始终是全量。
 
 ## 扫描与排除
 
@@ -75,6 +84,16 @@ gdloc [路径] [选项]
 - 字符串 `"..."` 内的 `//`、`/*` 不触发注释判定（`#include`、`hint_enum` 等均可能含字符串）。
 - 块注释内部的纯空白行计为空行；未闭合的块注释延续到文件末尾，其余内容按注释计。
 - 空文件、BOM、CRLF、末行无换行的处理同 GDScript。
+
+### 场景与资源（`.tscn`、`.tres`，阶段 4）
+
+- 文件本身只统计总行数，分别列为 Scene 与 Resource，不计入代码总量。
+- 内嵌代码提取后交给对应计数器：
+  - `[sub_resource type="GDScript" ...]` 的 `script/source` → `GDScript (embedded)`。
+  - `[sub_resource type="Shader" ...]` 的 `code` → `Shader (embedded)`。
+  - `[gd_resource type="Shader" ...]` 的 `[resource]` 段 `code` → `Shader (embedded)`（主资源为 Shader 的 `.tres`）。
+- 字符串值支持真实换行与 `\n` 转义两种存储，`\"`、`\\` 等按 Godot 规则反转义。
+- `VisualShader` 资源只计数量，不计行数。
 
 ## 与 scc 的差异
 
@@ -110,3 +129,15 @@ gdloc [路径] [选项]
 | `D:\Godot\flipped-sky` | 0 | 0 | 0 | 0 | 0 |
 
 gdloc 的 Shader 组与 scc 的 GLSL 组逐文件对比 0 差异。scc 的 GLSL 组恰好只包含 `.gdshader` / `.gdshaderinc`；本机 scc 3.7.0 不识别该扩展名，对比时把样本复制到临时目录改名为 `.glsl` 交给 scc 解析。三个项目均无原生 `.glsl`。
+
+### Scene / Resource
+
+scc 的 "Godot Scene" **只统计 `.tscn`**（Windup 有 12 个 `.tres` 但未计入）。对比 Files 与 Lines：
+
+| 项目 | gdloc Scene Files | scc Godot Scene Files | gdloc Scene Lines | scc Lines |
+|---|---|---|---|---|
+| `D:\WindupWonderland\src` | 35 | 35 | 3,210 | 3,210 |
+| `D:\Godot\astral-mason` | 19 | 19 | 4,657 | 4,657 |
+| `D:\Godot\flipped-sky` | 15 | 15 | 3,254 | 3,254 |
+
+`.tscn` 的 Files 与 Lines 完全一致。`.tres` 没有对应的 scc 组（scc 不计入 Godot Scene），gdloc 单独列为 Resource：Windup `12 / 187`，另两个项目为 0。三个真实项目均无内嵌 GDScript / Shader（`script/source` 与 `type="Shader"` 命中数为 0），故表格中无 `(embedded)` 行。

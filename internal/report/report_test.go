@@ -100,8 +100,13 @@ func TestTableNoHeaderWithoutProject(t *testing.T) {
 	rep.ProjectName = ""
 	var buf bytes.Buffer
 	WriteTable(&buf, rep, false, 0)
-	if strings.Contains(buf.String(), "Project:") || strings.Contains(buf.String(), "Root:") {
-		t.Errorf("unexpected header without project name:\n%s", buf.String())
+	out := buf.String()
+	if strings.Contains(out, "Project:") || strings.Contains(out, "Root:") {
+		t.Errorf("unexpected header without project name:\n%s", out)
+	}
+	// Scene/Resource 文件数为 0 时不显示。
+	if strings.Contains(out, "Scene") || strings.Contains(out, "Resource") {
+		t.Errorf("empty Scene/Resource rows should be hidden:\n%s", out)
 	}
 }
 
@@ -190,5 +195,74 @@ func TestBuildSample(t *testing.T) {
 	}
 	if byLang["Shader"].Files != 2 {
 		t.Errorf("Shader files = %d, want 2", byLang["Shader"].Files)
+	}
+}
+
+func TestBuildEmbedded(t *testing.T) {
+	root := filepath.Join("..", "..", "testdata", "embedded")
+	entries, err := scan.Scan(root, scan.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep := Build(root, entries, nil)
+	byLang := map[string]LangStat{}
+	for _, l := range rep.Languages {
+		byLang[l.Language] = l
+	}
+
+	gd := byLang["GDScript (embedded)"]
+	if gd.Files != 3 || gd.Blocks != 3 {
+		t.Errorf("GDScript (embedded) files=%d blocks=%d, want 3/3", gd.Files, gd.Blocks)
+	}
+	if gd.Result != (counter.Result{Lines: 20, Code: 13, Comments: 4, Doc: 2, Blanks: 3}) {
+		t.Errorf("GDScript (embedded) = %+v", gd.Result)
+	}
+
+	sh := byLang["Shader (embedded)"]
+	if sh.Files != 3 || sh.Blocks != 3 {
+		t.Errorf("Shader (embedded) files=%d blocks=%d, want 3/3", sh.Files, sh.Blocks)
+	}
+	if sh.Result != (counter.Result{Lines: 25, Code: 12, Comments: 9, Doc: 6, Blanks: 4}) {
+		t.Errorf("Shader (embedded) = %+v", sh.Result)
+	}
+
+	if rep.Scenes.Files != 7 {
+		t.Errorf("Scenes.Files = %d, want 7", rep.Scenes.Files)
+	}
+	if rep.Resources.Files != 1 {
+		t.Errorf("Resources.Files = %d, want 1", rep.Resources.Files)
+	}
+	if rep.VisualShaders != 1 {
+		t.Errorf("VisualShaders = %d, want 1", rep.VisualShaders)
+	}
+
+	// 内嵌块以 parent::id 形式出现在 by-file 列表。
+	found := false
+	for _, f := range rep.Files {
+		if f.Path == "embedded_script.tscn::GDScript_qr1jj" && f.Language == "GDScript (embedded)" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("embedded by-file entry not found")
+	}
+}
+
+func TestTableShowsSceneResource(t *testing.T) {
+	rep := sampleReport()
+	rep.Scenes = LangStat{Language: "Scene", Files: 35, Result: counter.Result{Lines: 3210}}
+	rep.Resources = LangStat{Language: "Resource", Files: 12, Result: counter.Result{Lines: 500}}
+	rep.VisualShaders = 2
+	var buf bytes.Buffer
+	WriteTable(&buf, rep, false, 0)
+	out := buf.String()
+	if !strings.Contains(out, "Scene") || !strings.Contains(out, "3,210") {
+		t.Errorf("missing scene row:\n%s", out)
+	}
+	if !strings.Contains(out, "Resource") || !strings.Contains(out, "500") {
+		t.Errorf("missing resource row:\n%s", out)
+	}
+	if !strings.Contains(out, "2 VisualShader resource(s) not counted") {
+		t.Errorf("missing visual shader note:\n%s", out)
 	}
 }

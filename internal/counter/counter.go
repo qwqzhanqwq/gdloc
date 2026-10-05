@@ -13,6 +13,11 @@ type Result struct {
 	Blanks   int
 }
 
+// CountLines 只统计文本的总行数（用于 Scene/Resource），规则同 CountGDScript 的行数定义。
+func CountLines(text string) int {
+	return len(splitLines(strings.TrimPrefix(text, "\ufeff")))
+}
+
 // CountGDScript 统计 GDScript 文本，规则见 AGENTS.md 4.1、4.2。
 func CountGDScript(text string) Result {
 	text = strings.TrimPrefix(text, "\ufeff")

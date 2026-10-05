@@ -20,6 +20,9 @@ func WriteTable(w io.Writer, rep Report, byFile bool, top int) {
 	} else {
 		writeLangTable(w, rep, top)
 	}
+	if rep.VisualShaders > 0 {
+		fmt.Fprintf(w, "Note: %d VisualShader resource(s) not counted.\n", rep.VisualShaders)
+	}
 	if rep.CSharpFiles > 0 {
 		fmt.Fprintf(w, "Note: %d C# file(s) not counted.\n", rep.CSharpFiles)
 	}
@@ -35,7 +38,20 @@ func writeLangTable(w io.Writer, rep Report, top int) {
 		rows = append(rows, langRow(ls))
 	}
 	rows = append(rows, langRow(rep.Total))
-	renderRows(w, header, rows, 1)
+	var tail [][]string
+	if rep.Scenes.Files > 0 {
+		tail = append(tail, sectionRow(rep.Scenes))
+	}
+	if rep.Resources.Files > 0 {
+		tail = append(tail, sectionRow(rep.Resources))
+	}
+
+	widths := columnWidths(append(append([][]string{header}, rows...), tail...))
+	writeLines(w, append([][]string{header}, rows...), widths, 1)
+	if len(tail) > 0 {
+		fmt.Fprintln(w, strings.Repeat("-", totalWidth(widths)))
+		writeLines(w, tail, widths, 1)
+	}
 }
 
 func writeFileTable(w io.Writer, rep Report, top int) {
@@ -50,7 +66,9 @@ func writeFileTable(w io.Writer, rep Report, top int) {
 			comma(f.Result.Comments), comma(f.Result.Doc), comma(f.Result.Blanks),
 		})
 	}
-	renderRows(w, header, rows, 2)
+	all := append([][]string{header}, rows...)
+	widths := columnWidths(all)
+	writeLines(w, all, widths, 2)
 }
 
 func langRow(ls LangStat) []string {
@@ -60,34 +78,44 @@ func langRow(ls LangStat) []string {
 	}
 }
 
-// renderRows 按列宽预对齐后再交给 tabwriter 拼接：numericFrom 之前的列左对齐，其余右对齐。
-func renderRows(w io.Writer, header []string, rows [][]string, numericFrom int) {
-	widths := make([]int, len(header))
-	for i, h := range header {
-		widths[i] = len(h)
-	}
-	for _, r := range rows {
-		for i, c := range r {
+// sectionRow 只填 Language / Files / Lines，其余列留空。
+func sectionRow(ls LangStat) []string {
+	return []string{ls.Language, comma(ls.Files), comma(ls.Result.Lines), "", "", "", ""}
+}
+
+func columnWidths(rows [][]string) []int {
+	widths := make([]int, len(rows[0]))
+	for _, row := range rows {
+		for i, c := range row {
 			if len(c) > widths[i] {
 				widths[i] = len(c)
 			}
 		}
 	}
+	return widths
+}
+
+func totalWidth(widths []int) int {
+	sum := 0
+	for _, w := range widths {
+		sum += w
+	}
+	return sum + 2*(len(widths)-1)
+}
+
+// writeLines 预对齐后交给 tabwriter 拼接：numericFrom 之前的列左对齐，其余右对齐。
+func writeLines(w io.Writer, rows [][]string, widths []int, numericFrom int) {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	write := func(cells []string) {
-		pad := make([]string, len(cells))
-		for i, c := range cells {
+	for _, row := range rows {
+		cells := make([]string, len(row))
+		for i, c := range row {
 			if i >= numericFrom {
-				pad[i] = fmt.Sprintf("%*s", widths[i], c)
+				cells[i] = fmt.Sprintf("%*s", widths[i], c)
 			} else {
-				pad[i] = fmt.Sprintf("%-*s", widths[i], c)
+				cells[i] = fmt.Sprintf("%-*s", widths[i], c)
 			}
 		}
-		fmt.Fprintln(tw, strings.Join(pad, "\t"))
-	}
-	write(header)
-	for _, r := range rows {
-		write(r)
+		fmt.Fprintln(tw, strings.Join(cells, "\t"))
 	}
 	tw.Flush()
 }
@@ -115,6 +143,7 @@ func comma(n int) string {
 type jsonLang struct {
 	Language string `json:"language"`
 	Files    int    `json:"files"`
+	Blocks   int    `json:"blocks"`
 	Lines    int    `json:"lines"`
 	Code     int    `json:"code"`
 	Comments int    `json:"comments"`
@@ -132,34 +161,46 @@ type jsonFile struct {
 	Blanks   int    `json:"blanks"`
 }
 
+type jsonSection struct {
+	Files int `json:"files"`
+	Lines int `json:"lines"`
+}
+
 type jsonReport struct {
-	ProjectName string     `json:"project_name"`
-	Root        string     `json:"root"`
-	Languages   []jsonLang `json:"languages"`
-	Total       jsonLang   `json:"total"`
-	Files       []jsonFile `json:"files,omitempty"`
+	ProjectName   string      `json:"project_name"`
+	Root          string      `json:"root"`
+	Languages     []jsonLang  `json:"languages"`
+	Total         jsonLang    `json:"total"`
+	Scenes        jsonSection `json:"scenes"`
+	Resources     jsonSection `json:"resources"`
+	VisualShaders int         `json:"visual_shaders"`
+	Files         []jsonFile  `json:"files,omitempty"`
+}
+
+func toJSONLang(ls LangStat) jsonLang {
+	return jsonLang{
+		Language: ls.Language, Files: ls.Files, Blocks: ls.Blocks, Lines: ls.Result.Lines,
+		Code: ls.Result.Code, Comments: ls.Result.Comments, Doc: ls.Result.Doc, Blanks: ls.Result.Blanks,
+	}
 }
 
 // WriteJSON 以 JSON 输出；byFile 时额外包含 files，top>0 时截断数组但 total 保持全量。
 func WriteJSON(w io.Writer, rep Report, byFile bool, top int) {
-	out := jsonReport{ProjectName: rep.ProjectName, Root: rep.Root}
+	out := jsonReport{
+		ProjectName: rep.ProjectName,
+		Root:        rep.Root,
+		Scenes:      jsonSection{Files: rep.Scenes.Files, Lines: rep.Scenes.Result.Lines},
+		Resources:   jsonSection{Files: rep.Resources.Files, Lines: rep.Resources.Result.Lines},
+		Total:       toJSONLang(rep.Total),
+	}
+	out.Languages = []jsonLang{}
 	for i, ls := range rep.Languages {
 		if top > 0 && i >= top {
 			break
 		}
-		out.Languages = append(out.Languages, jsonLang{
-			Language: ls.Language, Files: ls.Files, Lines: ls.Result.Lines, Code: ls.Result.Code,
-			Comments: ls.Result.Comments, Doc: ls.Result.Doc, Blanks: ls.Result.Blanks,
-		})
+		out.Languages = append(out.Languages, toJSONLang(ls))
 	}
-	if out.Languages == nil {
-		out.Languages = []jsonLang{}
-	}
-	t := rep.Total
-	out.Total = jsonLang{
-		Language: t.Language, Files: t.Files, Lines: t.Result.Lines, Code: t.Result.Code,
-		Comments: t.Result.Comments, Doc: t.Result.Doc, Blanks: t.Result.Blanks,
-	}
+	out.VisualShaders = rep.VisualShaders
 	if byFile {
 		out.Files = []jsonFile{}
 		for i, f := range rep.Files {

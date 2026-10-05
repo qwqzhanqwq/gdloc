@@ -1,0 +1,15 @@
+[gd_resource type="Shader" format=3]
+
+[resource]
+code = "/**
+ * Doc comment for the shader.
+ */
+shader_type canvas_item;
+
+// A line comment.
+uniform int mode : hint_enum(\"A\", \"B\") = 0;
+
+void fragment() {
+	COLOR = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"

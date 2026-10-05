@@ -1,0 +1,21 @@
+[gd_scene format=3]
+
+[sub_resource type="GDScript" id="GDScript_qr1jj"]
+script/source = "## Doc comment for the embedded class.
+# A regular comment.
+extends Node
+
+const GREETING := \"say \\\"hi\\\" C:\\\\path\"
+
+
+func _ready() -> void:
+	var text := \"\"\"
+	multi line one
+	multi line two
+	\"\"\"
+	print(GREETING)
+	print(text)
+"
+
+[node name="Root" type="Node" unique_id=513717473]
+script = SubResource("GDScript_qr1jj")

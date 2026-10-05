@@ -1,0 +1,10 @@
+[gd_scene format=3]
+
+[sub_resource type="GDScript" id="GDScript_m1"]
+script/source = "extends Node\n# c\nvar x := 1\n"
+
+[sub_resource type="Shader" id="Shader_m2"]
+code = "shader_type canvas_item;\n// c\nvoid fragment() {}\n"
+
+[node name="Root" type="Node"]
+script = SubResource("GDScript_m1")

@@ -92,6 +92,7 @@ gdloc/
 - 内嵌代码（阶段 4）：
   - `[sub_resource type="GDScript" ...]` 中的 `script/source = "..."` → 计入 "GDScript (embedded)"。
   - `[sub_resource type="Shader" ...]` 中的 `code = "..."` → 计入 "Shader (embedded)"。
+  - `[gd_resource type="Shader" ...]` 的 `[resource]` 段中的 `code = "..."` → 计入 "Shader (embedded)"（主资源为 Shader 的 `.tres`；Godot 不支持把 GDScript 保存为 `.tres` 主资源，故无对应情况）。
   - 先把字符串值完整取出并反转义，再交给对应计数器。
   - 字符串可能跨越多个物理行，也可能使用 `\n` 转义，两种情况都要处理。
   - **实现前必须先用用户真实项目里的 tscn/tres 样本确认格式**，把样本放进 `testdata/`，不要凭猜测实现。
