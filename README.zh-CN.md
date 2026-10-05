@@ -182,6 +182,18 @@ gdloc [路径] [选项]
 - GDScript 满足以下任一即视为疑似：以 `func`、`var`、`const`、`if`、`elif`、`else`、`for`、`while`、`match`、`return`、`await`、`pass`、`extends`、`class_name`、`signal`、`@export`、`@onready` 开头；或以 `)` / `:` 结尾；或包含 `" = "`。
 - Shader 满足以下任一即视为疑似：以 `uniform`、`void`、`float`、`int`、`vec2`、`vec3`、`vec4`、`if`、`return` 开头；或以 `;` 结尾。
 
+## Agent skill
+
+编码 agent（Claude Code、DSH 等支持 skill 的工具）如果知道怎么用 gdloc，效果会明显更好：哪个参数回答哪类问题、扫描根必须是 `project.godot` 所在目录、Scene / Resource 的行不计入 Total、`.cs` 文件不统计。这份知识打包在 [`skill/gdloc/`](skill/gdloc)：
+
+```
+skill/gdloc/
+├── SKILL.md                     # 什么时候用 gdloc、怎么读懂它的数字
+└── scripts/gdloc_summary.py     # 把 gdloc --json 的输出压成摘要，供超大项目使用
+```
+
+安装方式：把 `skill/gdloc` 目录放进你的 agent 读取 skill 的目录（Claude Code 与 DSH 是 `~/.agents/skills/`，Windows 上即 `%USERPROFILE%\.agents\skills\`；用符号链接或 junction 指向仓库里的这个目录可以保持同步）。[`skill/evals/`](skill/evals) 存放用来检验 skill 行为的样例工程生成脚本与测试用例。
+
 ## 与 scc 的差异
 
 ### GDScript

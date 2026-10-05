@@ -1,0 +1,57 @@
+{
+  "skill_name": "gdloc",
+  "notes": [
+    "Assertion wording is the contract between the eval author and the grader, so numbers here are exact rather than approximate: every figure comes from ground-truth.json, captured by running the real gdloc binary against the fixtures.",
+    "Assertions deliberately cover the traps that graders found unguarded in iteration 1: stats scope (whole project vs addons excluded), addons files being mistaken for the user's own, and the Project/Resource lines leaking into Total."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "project-size-report",
+      "prompt": "我这个 Godot 项目现在多大了？我想在开始做新内容前有个数。",
+      "expected_output": "通过 gdloc 报告 WindupWonderland 的规模：扫描根是含 project.godot 的 src/，Total 25 文件 / 1,873 行 / 1,419 代码行（不含 Scene 39 行与 Resource 11 行），并说明 1 个 .cs 未计入。",
+      "files": ["file:///C:/Users/zhan/AppData/Local/Temp/gdloc-eval-iter1/windup/src"],
+      "assertions": [
+        "报告里出现了项目名 WindupWonderland",
+        "被报告的主项目扫描根是含 project.godot 的 src 目录，而不是 windup 或 windup/src 之外的目录（若答案另外说明了 astral-mason，不影响本条判定）",
+        "代码行数为 1,419（允许 ±2% 误差）",
+        "总行数为 1,873，且没有把 Scene(39) 或 Resource(11) 加到 Total 上（出现 1,923 或把两者并入 Total 即为失败）",
+        "Doc(51) 被当作 Comments(66) 的子集处理，没有把两者相加（如出现 117 即失败）",
+        "提到有 1 个 C# 文件未被统计",
+        "给出了实际执行过的 gdloc 命令（含真实路径或工作目录，而不是仅有占位示例）"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "own-code-vs-addons",
+      "prompt": "我想知道我这个 Godot 项目里有多少代码是我自己写的、多少是第三方插件带来的。顺便说一下我自己写的最长的三个 GDScript 文件是哪些，我想先看看要不要拆。",
+      "expected_output": "用 --by-addon（或等价方式）区分 (project) 与插件：自己写的 705 行代码、插件 714 行；三个最长自写文件依次为 world/level.gd(143)、player/puppet.gd(123)、player/puppet_state.gd(93)。",
+      "files": ["file:///C:/Users/zhan/AppData/Local/Temp/gdloc-eval-iter1/windup/src"],
+      "assertions": [
+        "自己写的代码量为 705 行（允许 ±2% 误差；仅当答案注明口径不同时才算通过）",
+        "第三方插件的代码量为 714 行（允许 ±2% 误差）",
+        "三个最长自写文件按次序为 world/level.gd(143 代码行)、player/puppet.gd(123)、player/puppet_state.gd(93)",
+        "没有把 addons/ 下的文件（尤其 addons/ww_water/river.gd 162、flow_map.gd 132、baker.gd 112）说成用户自己写的文件",
+        "没有把 Doc 列当成与 Comments 并列的独立类别相加",
+        "若答案给出\"你自己代码里有多少函数/信号\"或\"你自己的注释率\"这类限定在自写代码上的结构统计，该数字必须来自加了 --exclude-addons 的那次运行或同等口径；把含插件的全项目统计（如 func 151）说成自写代码的即失败"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "compare-two-projects",
+      "prompt": "我手上有两个 Godot 工程，一个叫 WindupWonderland，一个叫 astral-mason，想比较一下规模，看看哪个更值得继续投入。",
+      "expected_output": "跑两次 gdloc 并对比：Windup 1,419 行代码 / astral 197 行代码；说明 Windup 约一半代码来自 addons（714 行），astral 的插件代码为 0。",
+      "files": [
+        "file:///C:/Users/zhan/AppData/Local/Temp/gdloc-eval-iter1/windup/src",
+        "file:///C:/Users/zhan/AppData/Local/Temp/gdloc-eval-iter1/astral"
+      ],
+      "assertions": [
+        "两个项目都被正确识别（WindupWonderland 与 astral-mason），且各自的扫描根正确（Windup 用含 project.godot 的 src/，astral 用项目根）",
+        "Windup 的代码量为 1,419（允许 ±2% 误差）",
+        "astral 的代码量为 197（允许 ±2% 误差）",
+        "指出 Windup 的代码有约一半（714 行，约 50%）来自 addons/，并给出剥离后的第一方代码量 705 行",
+        "指出 astral 的第三方/插件代码为 0（例如 astral 的 --by-addon 只有 (project) 一行，或明确说没有 addons）"
+      ]
+    }
+  ]
+}

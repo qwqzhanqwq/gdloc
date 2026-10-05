@@ -182,6 +182,18 @@ The default table and other outputs are unchanged; the following only appears in
 - GDScript: suspected if it starts with `func`, `var`, `const`, `if`, `elif`, `else`, `for`, `while`, `match`, `return`, `await`, `pass`, `extends`, `class_name`, `signal`, `@export` or `@onready`; or ends with `)` / `:`; or contains `" = "`.
 - Shader: suspected if it starts with `uniform`, `void`, `float`, `int`, `vec2`, `vec3`, `vec4`, `if` or `return`; or ends with `;`.
 
+## Agent skill
+
+Coding agents (Claude Code, DSH and other harnesses that support skills) work better with gdloc when they know how to drive it: which option answers which question, that the scan root must be the directory holding `project.godot`, that Scene / Resource lines stay out of Total, and that `.cs` files are not counted. A skill that packages exactly that knowledge lives in [`skill/gdloc/`](skill/gdloc):
+
+```
+skill/gdloc/
+├── SKILL.md                     # when to reach for gdloc, and how to read its numbers
+└── scripts/gdloc_summary.py     # condenses `gdloc --json` output for very large projects
+```
+
+To install it, put the `skill/gdloc` directory in the skills folder your agent reads (for Claude Code and DSH that is `~/.agents/skills/`, i.e. `%USERPROFILE%\.agents\skills\` on Windows, where a symlink or junction to this directory keeps it in sync with the repository). [`skill/evals/`](skill/evals) holds the fixture generator and the test cases used to check that the skill behaves.
+
 ## Differences from scc
 
 ### GDScript
