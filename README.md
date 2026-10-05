@@ -23,7 +23,7 @@ gdloc [路径] [选项]
 | `--top N` | 只显示前 N 行；Total 仍按全部计算 |
 | `--json` | 以 JSON 输出（字段名 snake_case） |
 | `--exclude-dir a,b` | 按目录名排除，任意层级命中即跳过 |
-| `--no-ignore` | 不读取 `.gitignore`（`.gitignore` 支持待定，当前无效果） |
+| `--no-ignore` | 不读取 `.gitignore` |
 | `--version` | 显示版本 |
 
 默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。存在 `.cs` 文件时表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
@@ -47,6 +47,12 @@ gdloc [路径] [选项]
 ```
 
 `files` 仅在带 `--by-file` 时出现；`--top N` 会截断 `languages` / `files` 数组，但 `total` 始终是全量。
+
+## 扫描与排除
+
+- 默认跳过 `.godot/`、`.git/` 等所有以 `.` 开头的目录，以及包含 `.gdignore` 的目录及其子树。
+- `--exclude-dir a,b` 按目录名匹配，任意层级命中即跳过。
+- `.gitignore`：只在扫描根目录及其子目录中查找（不向上读取根目录以外），逐目录收集、就近优先，子目录规则可覆盖上级。支持 `#` 注释、`!` 否定、`/` 锚定、尾 `/` 仅匹配目录、`*` / `?` / `**` 通配。被忽略的目录整棵子树跳过。`--no-ignore` 时完全不读 `.gitignore`。
 
 ## 计数规则
 

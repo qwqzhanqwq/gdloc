@@ -125,3 +125,114 @@ func TestScanExcludeDir(t *testing.T) {
 		t.Errorf("Scan =\n%v\nwant\n%v", got, want)
 	}
 }
+
+// writeFile 写入指定内容的文件，用于构造 .gitignore。
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error: %v", path, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) error: %v", path, err)
+	}
+}
+
+func checkScan(t *testing.T, root string, opts Options, want []FileEntry) {
+	t.Helper()
+	got, err := Scan(root, opts)
+	if err != nil {
+		t.Fatalf("Scan error: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Scan =\n%v\nwant\n%v", got, want)
+	}
+}
+
+func TestGitignoreBasic(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "*.log\n")
+	writeTree(t, root, "a.gd", "a.log", "sub/b.gd", "sub/b.log")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "a.gd", Type: TypeGDScript},
+		{Path: "sub/b.gd", Type: TypeGDScript},
+	})
+}
+
+func TestGitignoreNegation(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "*.log\n!keep.log\n")
+	writeTree(t, root, "a.log", "keep.log", "b.gd")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "b.gd", Type: TypeGDScript},
+		{Path: "keep.log", Type: TypeUnknown},
+	})
+}
+
+func TestGitignoreAnchored(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "/build\n")
+	writeTree(t, root, "build/a.gd", "sub/build/b.gd", "root.gd")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "root.gd", Type: TypeGDScript},
+		{Path: "sub/build/b.gd", Type: TypeGDScript},
+	})
+}
+
+func TestGitignoreDirOnly(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "cache/\n")
+	writeTree(t, root, "cache/x.gd", "top/cache", "note.txt")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "note.txt", Type: TypeUnknown},
+		{Path: "top/cache", Type: TypeUnknown},
+	})
+}
+
+func TestGitignoreDoubleStar(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "**/temp\n")
+	writeTree(t, root, "temp", "a/temp", "a/b/temp", "a/keep.gd")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "a/keep.gd", Type: TypeGDScript},
+	})
+}
+
+func TestGitignoreSubdirOverride(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "*.log\n")
+	writeFile(t, filepath.Join(root, "sub", ".gitignore"), "!keep.log\n")
+	writeTree(t, root, "root.log", "sub/other.log", "sub/keep.log", "sub/ok.gd")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "sub/.gitignore", Type: TypeUnknown},
+		{Path: "sub/keep.log", Type: TypeUnknown},
+		{Path: "sub/ok.gd", Type: TypeGDScript},
+	})
+}
+
+func TestGitignoreSubdirScoped(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "sub", ".gitignore"), "*.tmp\n")
+	writeTree(t, root, "x.tmp", "sub/y.tmp", "sub/z.gd")
+	checkScan(t, root, Options{}, []FileEntry{
+		{Path: "sub/.gitignore", Type: TypeUnknown},
+		{Path: "sub/z.gd", Type: TypeGDScript},
+		{Path: "x.tmp", Type: TypeUnknown},
+	})
+}
+
+func TestGitignoreNoIgnore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "*.log\n")
+	writeTree(t, root, "a.log", "b.gd")
+	checkScan(t, root, Options{NoIgnore: true}, []FileEntry{
+		{Path: ".gitignore", Type: TypeUnknown},
+		{Path: "a.log", Type: TypeUnknown},
+		{Path: "b.gd", Type: TypeGDScript},
+	})
+}

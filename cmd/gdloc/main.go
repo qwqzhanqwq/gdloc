@@ -45,7 +45,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.IntVar(&top, "top", 0, "show only the first N rows")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	fs.StringVar(&excludeDir, "exclude-dir", "", "comma-separated directory names to exclude")
-	fs.BoolVar(&noIgnore, "no-ignore", false, "do not read .gitignore (not yet implemented)")
+	fs.BoolVar(&noIgnore, "no-ignore", false, "do not read .gitignore")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: gdloc [path] [options]\n\nOptions:\n")
 		fs.PrintDefaults()
@@ -98,7 +98,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	entries, err := scan.Scan(rootAbs, scan.Options{ExcludeDirs: splitList(excludeDir)})
+	entries, err := scan.Scan(rootAbs, scan.Options{ExcludeDirs: splitList(excludeDir), NoIgnore: noIgnore})
 	if err != nil {
 		fmt.Fprintf(stderr, "error: cannot scan %q: %v\n", root, err)
 		return 2

@@ -2,7 +2,6 @@
 package scan
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,6 +24,8 @@ const (
 type Options struct {
 	// ExcludeDirs 是按目录名匹配的排除列表，任意层级命中即跳过。
 	ExcludeDirs []string
+	// NoIgnore 为真时不读取 .gitignore。
+	NoIgnore bool
 }
 
 // FileEntry 是一条分类结果，Path 为相对根目录的路径，统一用 / 分隔。
@@ -52,8 +53,9 @@ func Classify(name string) FileType {
 }
 
 // Scan 递归遍历 root，返回全部分类结果（含未识别文件）。
-// 跳过所有以 . 开头的目录（覆盖 .godot/、.git/）、包含 .gdignore 的目录，以及
-// opts.ExcludeDirs 命中的目录；根目录本身不参与跳过判定。
+// 跳过所有以 . 开头的目录（覆盖 .godot/、.git/）、包含 .gdignore 的目录、
+// opts.ExcludeDirs 命中的目录，以及被 .gitignore 忽略的路径（除非 opts.NoIgnore）。
+// 根目录本身不参与跳过判定；.gitignore 只在 root 及子目录中查找。
 // 返回的相对路径统一用 / 分隔，并按路径排序，保证输出稳定。
 func Scan(root string, opts Options) ([]FileEntry, error) {
 	exclude := make(map[string]bool, len(opts.ExcludeDirs))
@@ -62,37 +64,51 @@ func Scan(root string, opts Options) ([]FileEntry, error) {
 			exclude[name] = true
 		}
 	}
-
 	var out []FileEntry
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if path == root {
-				return nil
-			}
-			if strings.HasPrefix(d.Name(), ".") || exclude[d.Name()] {
-				return filepath.SkipDir
-			}
-			if _, statErr := os.Stat(filepath.Join(path, ".gdignore")); statErr == nil {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		out = append(out, FileEntry{
-			Path: filepath.ToSlash(rel),
-			Type: Classify(d.Name()),
-		})
-		return nil
-	})
-	if err != nil {
+	if err := walkDir(root, "", nil, opts, exclude, &out); err != nil {
 		return nil, err
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
+}
+
+func walkDir(dir, rel string, inherited []string, opts Options, exclude map[string]bool, out *[]FileEntry) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+
+	patterns := inherited
+	if !opts.NoIgnore {
+		patterns = loadGitignore(dir, rel, inherited)
+	}
+	matcher := newIgnoreMatcher(patterns)
+
+	for _, e := range entries {
+		name := e.Name()
+		childRel := name
+		if rel != "" {
+			childRel = rel + "/" + name
+		}
+		if e.IsDir() {
+			if strings.HasPrefix(name, ".") || exclude[name] {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(dir, name, ".gdignore")); err == nil {
+				continue
+			}
+			if !opts.NoIgnore && matcher.MatchesPath(childRel+"/") {
+				continue
+			}
+			if err := walkDir(filepath.Join(dir, name), childRel, patterns, opts, exclude, out); err != nil {
+				return err
+			}
+			continue
+		}
+		if !opts.NoIgnore && matcher.MatchesPath(childRel) {
+			continue
+		}
+		*out = append(*out, FileEntry{Path: childRel, Type: Classify(name)})
+	}
+	return nil
 }

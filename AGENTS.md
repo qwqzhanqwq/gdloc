@@ -25,7 +25,7 @@
 
 - 语言：Go，版本与本机 `go version` 一致，`go.mod` 中声明。
 - **优先只用标准库**：命令行参数用 `flag`，表格用 `text/tabwriter`，JSON 用 `encoding/json`。
-- 引入任何第三方依赖前**必须先询问用户**并说明理由。目前唯一预先认可的候选：解析 `.gitignore` 的库（仅在阶段 3 需要时）。
+- 引入任何第三方依赖前**必须先询问用户**并说明理由。目前唯一已认可的依赖：`github.com/sabhiram/go-gitignore`（解析 `.gitignore`，阶段 3 起使用）。
 - 编译产物为单个可执行文件，主要运行环境是 **Windows**（PowerShell 和 Git Bash 都要能用），同时保持跨平台。
 - 路径处理一律用 `path/filepath`；输出给用户看的相对路径统一用 `/` 分隔。
 - 文件读取：按 UTF-8 处理，去掉开头的 BOM，同时兼容 `\n` 和 `\r\n`，最后一行没有换行符也要计入。
