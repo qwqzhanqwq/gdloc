@@ -28,6 +28,16 @@ type LangStat struct {
 	Result   counter.Result
 }
 
+// GroupStat 是 --by-addon / --by-dir 的一行；Version/Dir/HasPluginCfg 仅插件分组使用。
+type GroupStat struct {
+	Name         string
+	Version      string
+	Dir          string
+	HasPluginCfg bool
+	Files        int
+	Result       counter.Result
+}
+
 // Report 是完整的汇总结果。
 type Report struct {
 	ProjectName   string
@@ -36,6 +46,7 @@ type Report struct {
 	Total         LangStat   // 只汇总代码类语言
 	Scenes        LangStat   // 分隔线下方，仅 Files 与 Lines 有意义
 	Resources     LangStat
+	Groups        []GroupStat // --by-addon / --by-dir 分组结果
 	Files         []FileStat
 	CSharpFiles   int
 	VisualShaders int
@@ -189,6 +200,13 @@ func (r *Report) SortBy(key string) {
 		}
 		return r.Files[i].Path < r.Files[j].Path
 	})
+	sort.Slice(r.Groups, func(i, j int) bool {
+		a, b := groupMetric(r.Groups[i], key), groupMetric(r.Groups[j], key)
+		if a != b {
+			return a > b
+		}
+		return r.Groups[i].Name < r.Groups[j].Name
+	})
 }
 
 func langMetric(l LangStat, key string) int {
@@ -217,5 +235,20 @@ func fileMetric(f FileStat, key string) int {
 		return f.Result.Lines
 	default:
 		return f.Result.Code
+	}
+}
+
+func groupMetric(g GroupStat, key string) int {
+	switch key {
+	case "lines":
+		return g.Result.Lines
+	case "comments":
+		return g.Result.Comments
+	case "blanks":
+		return g.Result.Blanks
+	case "files":
+		return g.Files
+	default:
+		return g.Result.Code
 	}
 }

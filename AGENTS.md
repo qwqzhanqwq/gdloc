@@ -112,7 +112,11 @@ gdloc/
 - 默认排除：`.godot/`、`.git/`、其他以 `.` 开头的目录。
 - 包含 `.gdignore` 文件的目录及其子目录全部跳过（与 Godot 行为一致）。
 - `.gitignore` 支持放在阶段 3，可以用 `--no-ignore` 关闭。
-- `addons/<name>/` 下有 `plugin.cfg` 的视为一个插件，读取其中的 `name` 字段作为显示名（阶段 5）。
+- 插件识别（阶段 5）：
+  - `addons/` 目录以项目根目录（`project.godot` 所在目录）为准，即 `<项目根>/addons/<目录>/`；找不到 `project.godot` 时退回扫描根目录下的 `addons/`。
+  - `addons/` 的每个直接子目录视为一个插件：有 `plugin.cfg` 时读取 `[plugin]` 段的 `name` 与 `version` 作为显示名和版本；没有 `plugin.cfg`（纯脚本库、GDExtension 等）时用目录名作为显示名并标注为无 `plugin.cfg`。
+  - `plugin.cfg` 解析失败时警告到 stderr，退回目录名，继续。
+  - 不在项目根 `addons/` 下的同名嵌套目录不视为插件。
 
 ---
 

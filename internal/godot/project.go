@@ -7,20 +7,15 @@ import (
 	"strings"
 )
 
-// FindProjectName 从 root 起逐层向上查找 project.godot，返回 [application] 下的
-// config/name。找到非空项目名时 ok 为 true；否则返回空串和 false。
-func FindProjectName(root string) (name string, ok bool) {
+// FindProjectRoot 从 root 起逐层向上查找 project.godot，返回所在目录。
+func FindProjectRoot(root string) (string, bool) {
 	dir, err := filepath.Abs(root)
 	if err != nil {
 		return "", false
 	}
 	for {
-		data, err := os.ReadFile(filepath.Join(dir, "project.godot"))
-		if err == nil {
-			if n := parseProjectName(string(data)); n != "" {
-				return n, true
-			}
-			return "", false
+		if _, err := os.Stat(filepath.Join(dir, "project.godot")); err == nil {
+			return dir, true
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -28,6 +23,21 @@ func FindProjectName(root string) (name string, ok bool) {
 		}
 		dir = parent
 	}
+}
+
+// FindProjectName 从 root 起逐层向上查找 project.godot，返回 [application] 下的
+// config/name。找到非空项目名时 ok 为 true；否则返回空串和 false。
+func FindProjectName(root string) (name string, ok bool) {
+	dir, ok := FindProjectRoot(root)
+	if !ok {
+		return "", false
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "project.godot"))
+	if err != nil {
+		return "", false
+	}
+	n := parseProjectName(string(data))
+	return n, n != ""
 }
 
 // parseProjectName 在近似 INI 的内容中读取 [application] 段的 config/name。

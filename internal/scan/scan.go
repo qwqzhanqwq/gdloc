@@ -24,6 +24,8 @@ const (
 type Options struct {
 	// ExcludeDirs 是按目录名匹配的排除列表，任意层级命中即跳过。
 	ExcludeDirs []string
+	// ExcludePaths 是绝对路径列表，命中目录及其子树整体跳过（如项目 addons/）。
+	ExcludePaths []string
 	// NoIgnore 为真时不读取 .gitignore。
 	NoIgnore bool
 }
@@ -64,15 +66,24 @@ func Scan(root string, opts Options) ([]FileEntry, error) {
 			exclude[name] = true
 		}
 	}
+	excludePaths := make(map[string]bool, len(opts.ExcludePaths))
+	for _, p := range opts.ExcludePaths {
+		if p != "" {
+			excludePaths[filepath.Clean(p)] = true
+		}
+	}
 	var out []FileEntry
-	if err := walkDir(root, "", nil, opts, exclude, &out); err != nil {
+	if err := walkDir(root, "", nil, opts, exclude, excludePaths, &out); err != nil {
 		return nil, err
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
 }
 
-func walkDir(dir, rel string, inherited []string, opts Options, exclude map[string]bool, out *[]FileEntry) error {
+func walkDir(dir, rel string, inherited []string, opts Options, exclude, excludePaths map[string]bool, out *[]FileEntry) error {
+	if excludePaths[filepath.Clean(dir)] {
+		return nil
+	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
@@ -100,7 +111,7 @@ func walkDir(dir, rel string, inherited []string, opts Options, exclude map[stri
 			if !opts.NoIgnore && matcher.MatchesPath(childRel+"/") {
 				continue
 			}
-			if err := walkDir(filepath.Join(dir, name), childRel, patterns, opts, exclude, out); err != nil {
+			if err := walkDir(filepath.Join(dir, name), childRel, patterns, opts, exclude, excludePaths, out); err != nil {
 				return err
 			}
 			continue

@@ -19,12 +19,17 @@ gdloc [路径] [选项]
 | 选项 | 说明 |
 |---|---|
 | `--by-file` | 每个文件一行，列为 Path / Language / Lines / Code / Comments / Doc / Blanks；内嵌代码用 `文件::id` 形式（主资源为 `文件::[resource]`） |
+| `--by-dir` | 按扫描根目录下的顶层目录分组，根目录文件归入 `(root)`；列为 Group / Files / Lines / Code / Comments / Doc / Blanks |
+| `--by-addon` | 按插件分组，非插件文件归入 `(project)`；列为 Addon / Version / Files / Lines / Code / Comments / Doc / Blanks |
+| `--exclude-addons` | 整个 `addons/` 目录不统计；不能与 `--by-addon` 同用 |
 | `--sort <列>` | `code`（默认）\| `comments` \| `blanks` \| `lines` \| `files`，降序 |
 | `--top N` | 只显示前 N 行；Total 仍按全部计算 |
 | `--json` | 以 JSON 输出（字段名 snake_case） |
 | `--exclude-dir a,b` | 按目录名排除，任意层级命中即跳过 |
 | `--no-ignore` | 不读取 `.gitignore` |
 | `--version` | 显示版本 |
+
+`--by-file`、`--by-dir`、`--by-addon` 三者互斥，同时使用报错退出码 1；`--exclude-addons` 与 `--by-addon` 同用也报错。`--sort` 与 `--top` 对分组结果生效，Total 始终按全部计算。
 
 默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。`.tscn`/`.tres` 中提取出的内嵌代码单独列为 `GDScript (embedded)` / `Shader (embedded)`（Files 为含内嵌代码的文件数，内嵌块数量见 `--by-file` 与 JSON），并计入 Total。分隔线下方单独显示 Scene（`.tscn`）与 Resource（`.tres`）的 Files 和 Lines（不计入 Total）。存在 `.cs` 文件或 VisualShader 时，表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
 
@@ -45,6 +50,13 @@ gdloc [路径] [选项]
   "scenes": {"files": 35, "lines": 3210},
   "resources": {"files": 12, "lines": 187},
   "visual_shaders": 0,
+  "addons": [
+    {"name": "WW Water", "dir": "addons/ww_water", "version": "0.1.0", "has_plugin_cfg": true, "files": 23, "lines": 4201, "code": 3186, "comments": 368, "doc": 131, "blanks": 647},
+    {"name": "(project)", "dir": "", "version": "", "has_plugin_cfg": false, "files": 46, "lines": 9998, "code": 7157, "comments": 1374, "doc": 961, "blanks": 1467}
+  ],
+  "dirs": [
+    {"name": "addons", "files": 86, "lines": 16287, "code": 13406, "comments": 1176, "doc": 697, "blanks": 1705}
+  ],
   "files": [
     {"path": "main.gd", "language": "GDScript", "lines": 24, "code": 20, "comments": 2, "doc": 1, "blanks": 2},
     {"path": "scenes/main.tscn::GDScript_qr1jj", "language": "GDScript (embedded)", "lines": 14, "code": 9, "comments": 2, "doc": 1, "blanks": 3}
@@ -55,12 +67,14 @@ gdloc [路径] [选项]
 - `languages` 只含代码类语言（含内嵌），`blocks` 为内嵌块数量；`files` 为含该内嵌代码的文件数。
 - `total` 汇总代码类语言；`scenes` / `resources` 单独给出 Files 与 Lines，不计入 `total`。
 - `visual_shaders` 为 VisualShader 资源数量。
-- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `files` 数组，但 `total` 始终是全量。
+- `addons` 仅在 `--by-addon` 时出现（含 `name` / `dir` / `version` / `has_plugin_cfg` 与各项计数）；`dirs` 仅在 `--by-dir` 时出现。
+- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `addons` / `dirs` / `files` 数组，但 `total` 始终是全量。
 
 ## 扫描与排除
 
 - 默认跳过 `.godot/`、`.git/` 等所有以 `.` 开头的目录，以及包含 `.gdignore` 的目录及其子树。
 - `--exclude-dir a,b` 按目录名匹配，任意层级命中即跳过。
+- 插件识别：`addons/` 以项目根目录（`project.godot` 所在目录）为准，即 `<项目根>/addons/<目录>/`；找不到 `project.godot` 时退回扫描根目录下的 `addons/`。`addons/` 的每个直接子目录视为一个插件，有 `plugin.cfg` 时读 `[plugin]` 的 `name` / `version`，没有时用目录名（标注无 `plugin.cfg`）；`plugin.cfg` 解析失败会警告并退回目录名。不在项目根 `addons/` 下的同名嵌套目录不算插件。`--exclude-addons` 跳过整个 `addons/` 目录。
 - `.gitignore`：只在扫描根目录及其子目录中查找（不向上读取根目录以外），逐目录收集、就近优先，子目录规则可覆盖上级。支持 `#` 注释、`!` 否定、`/` 锚定、尾 `/` 仅匹配目录、`*` / `?` / `**` 通配。被忽略的目录整棵子树跳过。`--no-ignore` 时完全不读 `.gitignore`。
 
 ## 计数规则

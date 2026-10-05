@@ -79,7 +79,7 @@ func TestTableTopKeepsTotal(t *testing.T) {
 	rep := sampleReport()
 	rep.SortBy("code")
 	var buf bytes.Buffer
-	WriteTable(&buf, rep, false, 1)
+	WriteTable(&buf, rep, ModeLanguage, 1)
 	out := buf.String()
 	if !strings.Contains(out, "Project: Demo") || !strings.Contains(out, "Root:    /tmp/demo") {
 		t.Errorf("missing header:\n%s", out)
@@ -99,7 +99,7 @@ func TestTableNoHeaderWithoutProject(t *testing.T) {
 	rep := sampleReport()
 	rep.ProjectName = ""
 	var buf bytes.Buffer
-	WriteTable(&buf, rep, false, 0)
+	WriteTable(&buf, rep, ModeLanguage, 0)
 	out := buf.String()
 	if strings.Contains(out, "Project:") || strings.Contains(out, "Root:") {
 		t.Errorf("unexpected header without project name:\n%s", out)
@@ -114,7 +114,7 @@ func TestJSONRoundTrip(t *testing.T) {
 	rep := sampleReport()
 	rep.SortBy("code")
 	var buf bytes.Buffer
-	WriteJSON(&buf, rep, true, 0)
+	WriteJSON(&buf, rep, ModeFile, 0)
 
 	var got struct {
 		ProjectName string `json:"project_name"`
@@ -158,7 +158,7 @@ func TestJSONTopTruncatesButTotalFull(t *testing.T) {
 	rep := sampleReport()
 	rep.SortBy("code")
 	var buf bytes.Buffer
-	WriteJSON(&buf, rep, false, 1)
+	WriteJSON(&buf, rep, ModeLanguage, 1)
 	var got struct {
 		Languages []json.RawMessage `json:"languages"`
 		Total     struct {
@@ -254,7 +254,7 @@ func TestTableShowsSceneResource(t *testing.T) {
 	rep.Resources = LangStat{Language: "Resource", Files: 12, Result: counter.Result{Lines: 500}}
 	rep.VisualShaders = 2
 	var buf bytes.Buffer
-	WriteTable(&buf, rep, false, 0)
+	WriteTable(&buf, rep, ModeLanguage, 0)
 	out := buf.String()
 	if !strings.Contains(out, "Scene") || !strings.Contains(out, "3,210") {
 		t.Errorf("missing scene row:\n%s", out)

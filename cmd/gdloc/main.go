@@ -33,14 +33,20 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("gdloc", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		byFile     bool
-		sortKey    string
-		top        int
-		jsonOut    bool
-		excludeDir string
-		noIgnore   bool
+		byFile        bool
+		byDir         bool
+		byAddon       bool
+		excludeAddons bool
+		sortKey       string
+		top           int
+		jsonOut       bool
+		excludeDir    string
+		noIgnore      bool
 	)
 	fs.BoolVar(&byFile, "by-file", false, "list one row per file")
+	fs.BoolVar(&byDir, "by-dir", false, "group by top-level directory")
+	fs.BoolVar(&byAddon, "by-addon", false, "group by addon plugin")
+	fs.BoolVar(&excludeAddons, "exclude-addons", false, "do not count the addons/ directory")
 	fs.StringVar(&sortKey, "sort", "code", "sort key: code|comments|blanks|lines|files")
 	fs.IntVar(&top, "top", 0, "show only the first N rows")
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
@@ -82,6 +88,20 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "error: --top must not be negative")
 		return 1
 	}
+	modes := 0
+	for _, b := range []bool{byFile, byDir, byAddon} {
+		if b {
+			modes++
+		}
+	}
+	if modes > 1 {
+		fmt.Fprintln(stderr, "error: --by-file, --by-dir and --by-addon are mutually exclusive")
+		return 1
+	}
+	if excludeAddons && byAddon {
+		fmt.Fprintln(stderr, "error: --exclude-addons cannot be used with --by-addon")
+		return 1
+	}
 
 	root := "."
 	if len(positionals) == 1 {
@@ -98,7 +118,17 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	entries, err := scan.Scan(rootAbs, scan.Options{ExcludeDirs: splitList(excludeDir), NoIgnore: noIgnore})
+	projectRoot, ok := godot.FindProjectRoot(rootAbs)
+	if !ok {
+		projectRoot = rootAbs
+	}
+	addonsDir := filepath.Join(projectRoot, "addons")
+
+	scanOpts := scan.Options{ExcludeDirs: splitList(excludeDir), NoIgnore: noIgnore}
+	if excludeAddons {
+		scanOpts.ExcludePaths = []string{addonsDir}
+	}
+	entries, err := scan.Scan(rootAbs, scanOpts)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: cannot scan %q: %v\n", root, err)
 		return 2
@@ -108,12 +138,25 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	if name, ok := godot.FindProjectName(rootAbs); ok {
 		rep.ProjectName = name
 	}
+
+	mode := report.ModeLanguage
+	switch {
+	case byFile:
+		mode = report.ModeFile
+	case byDir:
+		mode = report.ModeDir
+		rep.Groups = report.GroupByDir(rep)
+	case byAddon:
+		mode = report.ModeAddon
+		plugins := godot.ScanPlugins(addonsDir, stderr)
+		rep.Groups = report.GroupByAddon(rep, rootAbs, addonsDir, plugins)
+	}
 	rep.SortBy(sortKey)
 
 	if jsonOut {
-		report.WriteJSON(stdout, rep, byFile, top)
+		report.WriteJSON(stdout, rep, mode, top)
 	} else {
-		report.WriteTable(stdout, rep, byFile, top)
+		report.WriteTable(stdout, rep, mode, top)
 	}
 	return 0
 }
