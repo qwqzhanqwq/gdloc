@@ -13,7 +13,7 @@ scoop bucket add gdloc https://github.com/qwqzhanqwq/scoop-bucket
 scoop install gdloc
 ```
 
-升级用 `scoop update gdloc`。
+升级：先 `scoop update` 拉取 bucket 最新内容，再 `scoop update gdloc`。
 
 **用 Go 安装**（需要 Go 1.25+）：
 
