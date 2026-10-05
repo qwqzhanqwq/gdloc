@@ -1,61 +1,83 @@
 # gdloc
 
-Godot 4 项目代码行数统计工具（命令行，用 Go 编写）。
+English | [简体中文](README.zh-CN.md)
 
-## 安装
+A command-line line counter for Godot 4 projects, written in Go. It understands how Godot projects are laid out: it reads the project name and the plugins under `addons/`, counts scripts embedded in `.tscn` / `.tres` files, and respects `.gdignore` and `.gitignore`.
 
-**下载可执行文件**：在 [Releases](https://github.com/qwqzhanqwq/gdloc/releases) 下载对应平台的压缩包（Windows 为 `.zip`，macOS / Linux 为 `.tar.gz`），解压后把 `gdloc` 放到 `PATH` 中的目录。
+```
+$ gdloc
+Project: WindupWonderland
+Root:    D:\WindupWonderland\src
+Language  Files   Lines    Code  Comments    Doc  Blanks
+GDScript    115  24,943  19,680     2,267  1,499   2,996
+Shader       17   1,358     891       287    160     180
+Total       132  26,301  20,571     2,554  1,659   3,176
+--------------------------------------------------------
+Scene        35   3,217
+Resource     12     187
+```
 
-**Scoop（Windows）**：
+- Counts GDScript (`.gd`) and Godot shaders (`.gdshader` / `.gdshaderinc`), separating code, comments, doc comments (`##`, `/** */`) and blank lines.
+- Groups results by file, top-level directory or plugin; `--stats` reports function/signal counts and the longest files and functions.
+- Godot 4 only. C# (`.cs`) is not counted; if any `.cs` files exist, their number is shown as a note.
+- Read-only on the scanned project. No network access.
+
+## Install
+
+**Download a binary**: grab the archive for your platform from [Releases](https://github.com/qwqzhanqwq/gdloc/releases) (`.zip` on Windows, `.tar.gz` on macOS / Linux), extract it, and put `gdloc` in a directory on your `PATH`.
+
+**Scoop (Windows)**:
 
 ```powershell
 scoop bucket add gdloc https://github.com/qwqzhanqwq/scoop-bucket
 scoop install gdloc
 ```
 
-升级：先 `scoop update` 拉取 bucket 最新内容，再 `scoop update gdloc`。
+To upgrade, run `scoop update` to refresh the bucket, then `scoop update gdloc`.
 
-**用 Go 安装**（需要 Go 1.25+）：
+**Go** (requires Go 1.25+):
 
 ```sh
 go install github.com/qwqzhanqwq/gdloc/cmd/gdloc@latest
 ```
 
-## 构建
+## Build
 
 ```sh
 go build ./cmd/gdloc
 ```
 
-## 用法
+## Usage
 
 ```sh
-gdloc [路径] [选项]
+gdloc [path] [options]
 ```
 
-选项（参数可放在路径前后）：
+The path defaults to the current directory. The project name and plugin detection depend on `project.godot`, which is looked up in the scanned directory and its parents. If your repository keeps `project.godot` in a subdirectory (e.g. `src/`), run gdloc in that subdirectory or pass it as the path.
 
-| 选项 | 说明 |
+Options (may appear before or after the path):
+
+| Option | Description |
 |---|---|
-| `--by-file` | 每个文件一行，列为 Path / Language / Lines / Code / Comments / Doc / Blanks；内嵌代码用 `文件::id` 形式（主资源为 `文件::[resource]`） |
-| `--by-dir` | 按扫描根目录下的顶层目录分组，根目录文件归入 `(root)`；列为 Group / Files / Lines / Code / Comments / Doc / Blanks |
-| `--by-addon` | 按插件分组，非插件文件归入 `(project)`；列为 Addon / Version / Files / Lines / Code / Comments / Doc / Blanks |
-| `--exclude-addons` | 整个 `addons/` 目录不统计；不能与 `--by-addon` 同用 |
-| `--stats` | 进阶统计视图（注释分析、GDScript 结构、最长文件/函数）；不能与 `--by-file` / `--by-dir` / `--by-addon` 同用 |
-| `--sort <列>` | `code`（默认）\| `comments` \| `blanks` \| `lines` \| `files`，降序 |
-| `--top N` | 只显示前 N 行；Total 仍按全部计算 |
-| `--json` | 以 JSON 输出（字段名 snake_case） |
-| `--exclude-dir a,b` | 按目录名排除，任意层级命中即跳过 |
-| `--no-ignore` | 不读取 `.gitignore` |
-| `--version` | 显示版本 |
+| `--by-file` | One row per file, columns Path / Language / Lines / Code / Comments / Doc / Blanks. Embedded code is shown as `file::id` (`file::[resource]` for a main resource) |
+| `--by-dir` | Group by top-level directory under the scan root; files in the root itself go to `(root)`. Columns Group / Files / Lines / Code / Comments / Doc / Blanks |
+| `--by-addon` | Group by plugin; files outside plugins go to `(project)`. Columns Addon / Version / Files / Lines / Code / Comments / Doc / Blanks |
+| `--exclude-addons` | Skip the whole `addons/` directory. Cannot be combined with `--by-addon` |
+| `--stats` | Advanced statistics (comment analysis, GDScript structure, longest files/functions). Cannot be combined with `--by-file` / `--by-dir` / `--by-addon` |
+| `--sort <col>` | `code` (default) \| `comments` \| `blanks` \| `lines` \| `files`, descending |
+| `--top N` | Show only the first N rows; Total still covers everything |
+| `--json` | JSON output (snake_case field names) |
+| `--exclude-dir a,b` | Exclude directories by name, at any depth |
+| `--no-ignore` | Do not read `.gitignore` |
+| `--version` | Print the version |
 
-`--by-file`、`--by-dir`、`--by-addon` 三者互斥，同时使用报错退出码 1；`--exclude-addons` 与 `--by-addon` 同用也报错；`--stats` 与这三个分组参数互斥。`--sort` 与 `--top` 对分组结果生效，Total 始终按全部计算。
+`--by-file`, `--by-dir` and `--by-addon` are mutually exclusive; combining them is an error (exit code 1). Combining `--exclude-addons` with `--by-addon` is also an error, and `--stats` cannot be combined with any of the three grouping options. `--sort` and `--top` apply to the grouped rows; Total is always computed over everything.
 
-默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。`.tscn`/`.tres` 中提取出的内嵌代码单独列为 `GDScript (embedded)` / `Shader (embedded)`（Files 为含内嵌代码的文件数，内嵌块数量见 `--by-file` 与 JSON），并计入 Total。分隔线下方单独显示 Scene（`.tscn`）与 Resource（`.tres`）的 Files 和 Lines（不计入 Total）。存在 `.cs` 文件或 VisualShader 时，表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
+Default output: a per-language table (Language / Files / Lines / Code / Comments / Doc / Blanks) ending with a Total row. When `project.godot` is found, the project name and scan root are printed above the table. Code extracted from `.tscn` / `.tres` files is listed separately as `GDScript (embedded)` / `Shader (embedded)` (Files is the number of files containing embedded code; the number of embedded blocks is available in `--by-file` and JSON) and is included in Total. Below the separator, Scene (`.tscn`) and Resource (`.tres`) show Files and Lines only and are not part of Total. If `.cs` files or VisualShader resources exist, a note below the table shows how many were not counted. With `--by-file`, `--sort files` is meaningless and falls back to sorting by Lines.
 
-退出码：`0` 正常；`1` 参数错误；`2` 路径不存在或不可读。
+Exit codes: `0` success; `1` invalid arguments; `2` path does not exist or is not readable.
 
-### JSON 结构
+### JSON format
 
 ```json
 {
@@ -96,77 +118,77 @@ gdloc [路径] [选项]
 }
 ```
 
-- `languages` 只含代码类语言（含内嵌），`blocks` 为内嵌块数量；`files` 为含该内嵌代码的文件数。
-- `total` 汇总代码类语言；`scenes` / `resources` 单独给出 Files 与 Lines，不计入 `total`。
-- `visual_shaders` 为 VisualShader 资源数量。
-- `addons` 仅在 `--by-addon` 时出现（含 `name` / `dir` / `version` / `has_plugin_cfg` 与各项计数）；`dirs` 仅在 `--by-dir` 时出现。
-- `stats` 仅在 `--stats` 时出现，含注释分析（`comments` / `suspected` / `ratio`）、`structure`、`longest_files`（`path` / `language` / `code`）、`longest_functions`（`path` / `line` / `name` / `length`）。
-- `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `addons` / `dirs` / `files` / `stats.longest_*` 数组，但 `total` 始终是全量。
+- `languages` contains only code languages (including embedded ones). `blocks` is the number of embedded blocks; `files` is the number of files containing that embedded code.
+- `total` sums the code languages. `scenes` / `resources` give Files and Lines separately and are not part of `total`.
+- `visual_shaders` is the number of VisualShader resources.
+- `addons` appears only with `--by-addon` (with `name` / `dir` / `version` / `has_plugin_cfg` and the counts); `dirs` appears only with `--by-dir`.
+- `stats` appears only with `--stats`: comment analysis (`comments` / `suspected` / `ratio`), `structure`, `longest_files` (`path` / `language` / `code`) and `longest_functions` (`path` / `line` / `name` / `length`).
+- `files` appears only with `--by-file`; embedded blocks use `file::id` paths. `--top N` truncates the `languages` / `addons` / `dirs` / `files` / `stats.longest_*` arrays, but `total` always covers everything.
 
-## 扫描与排除
+## Scanning and exclusions
 
-- 默认跳过 `.godot/`、`.git/` 等所有以 `.` 开头的目录，以及包含 `.gdignore` 的目录及其子树。
-- `--exclude-dir a,b` 按目录名匹配，任意层级命中即跳过。
-- 插件识别：`addons/` 以项目根目录（`project.godot` 所在目录）为准，即 `<项目根>/addons/<目录>/`；找不到 `project.godot` 时退回扫描根目录下的 `addons/`。`addons/` 的每个直接子目录视为一个插件，有 `plugin.cfg` 时读 `[plugin]` 的 `name` / `version`，没有时用目录名（标注无 `plugin.cfg`）；`plugin.cfg` 解析失败会警告并退回目录名。不在项目根 `addons/` 下的同名嵌套目录不算插件。`--exclude-addons` 跳过整个 `addons/` 目录。
-- `.gitignore`：只在扫描根目录及其子目录中查找（不向上读取根目录以外），逐目录收集、就近优先，子目录规则可覆盖上级。支持 `#` 注释、`!` 否定、`/` 锚定、尾 `/` 仅匹配目录、`*` / `?` / `**` 通配。被忽略的目录整棵子树跳过。`--no-ignore` 时完全不读 `.gitignore`。
+- Directories starting with `.` (such as `.godot/` and `.git/`) are skipped, as are directories containing a `.gdignore` file and everything below them.
+- `--exclude-dir a,b` matches directory names at any depth.
+- Plugin detection: `addons/` is resolved against the project root (the directory containing `project.godot`), i.e. `<project root>/addons/<dir>/`. Without `project.godot`, `addons/` under the scan root is used. Each direct subdirectory of `addons/` is one plugin: if it has a `plugin.cfg`, `name` / `version` are read from its `[plugin]` section; otherwise the directory name is used (marked as having no `plugin.cfg`). If `plugin.cfg` fails to parse, a warning is printed and the directory name is used. Nested directories named `addons` elsewhere are not plugins. `--exclude-addons` skips the whole `addons/` directory.
+- `.gitignore`: only files inside the scan root and its subdirectories are read (nothing above the root). Rules are collected per directory and the nearest one wins, so a subdirectory can override its parents. Supports `#` comments, `!` negation, `/` anchoring, trailing `/` for directories only, and `*` / `?` / `**` wildcards. An ignored directory is skipped with its whole subtree. `--no-ignore` disables `.gitignore` entirely.
 
-## 计数规则
+## Counting rules
 
-每一行只归入一类，优先级：只含空白字符 → 空行；去掉注释后仍有非空白内容 → 代码行；其余 → 注释行。`Doc`（文档注释）是 `Comments` 的子集。
+Each line falls into exactly one category, in this order: whitespace only → blank; non-whitespace content left after removing comments → code; otherwise → comment. `Doc` (doc comments) is a subset of `Comments`.
 
-### GDScript（`.gd`，阶段 1）
+### GDScript (`.gd`)
 
-- 注释以 `#` 开头到行尾。行首（忽略缩进）为 `##` 的注释行额外计为文档注释；`#region` / `#endregion` 计为注释。
-- 字符串内的 `#` 不是注释，识别的形式：`"..."`、`'...'`、三引号 `"""..."""` / `'''...'''`、前缀 `&"..."`、`^"..."`、`r"..."`。
-- 三引号多行字符串的每一行计为代码行，但内部的纯空白行仍按 4.1 计为空行。
-- 单/双引号串不跨行；三引号串未闭合延续到文件末尾，其余内容按代码计。
-- 文件末尾的换行符不产生额外一行；空文件 0 行；只有一个换行符的文件为 1 个空行。
-- 读取时去掉开头的 UTF-8 BOM，兼容 `\n` 与 `\r\n`，末行无换行符也计入。
+- Comments start with `#` and run to the end of the line. A comment line starting with `##` (ignoring indentation) also counts as a doc comment. `#region` / `#endregion` count as comments.
+- `#` inside a string is not a comment. Recognized string forms: `"..."`, `'...'`, triple-quoted `"""..."""` / `'''...'''`, and the prefixed `&"..."`, `^"..."`, `r"..."`.
+- Every line of a triple-quoted string counts as code, except lines inside it that are whitespace only, which count as blank.
+- Single- and double-quoted strings do not span lines. An unterminated triple-quoted string runs to the end of the file, and its content counts as code.
+- A trailing newline at the end of the file does not create an extra line. An empty file has 0 lines; a file containing only a newline has 1 blank line.
+- A leading UTF-8 BOM is stripped, both `\n` and `\r\n` are accepted, and a last line without a newline is counted.
 
-### Godot Shader（`.gdshader`、`.gdshaderinc`，阶段 2）
+### Godot Shader (`.gdshader`, `.gdshaderinc`)
 
-- 单行注释 `//`，多行注释 `/* ... */`（不嵌套）。
-- `/** ... */` 是文档注释：覆盖的注释行同时计入 Comments 和 Doc；空的 `/**/` 不算文档注释。
-- 预处理指令（`#include`、`#define`、`#ifdef`、`#endif` 等）计为代码行，不是注释。
-- 字符串 `"..."` 内的 `//`、`/*` 不触发注释判定（`#include`、`hint_enum` 等均可能含字符串）。
-- 块注释内部的纯空白行计为空行；未闭合的块注释延续到文件末尾，其余内容按注释计。
-- 空文件、BOM、CRLF、末行无换行的处理同 GDScript。
+- Line comments `//`, block comments `/* ... */` (not nested).
+- `/** ... */` is a doc comment: the comment lines it covers count toward both Comments and Doc. An empty `/**/` is not a doc comment.
+- Preprocessor directives (`#include`, `#define`, `#ifdef`, `#endif`, etc.) are code, not comments.
+- `//` and `/*` inside a string `"..."` do not start a comment (strings can appear in `#include`, `hint_enum`, etc.).
+- Whitespace-only lines inside a block comment count as blank. An unterminated block comment runs to the end of the file, and its content counts as comment.
+- Empty files, BOM, CRLF and a missing final newline are handled as for GDScript.
 
-### 场景与资源（`.tscn`、`.tres`，阶段 4）
+### Scenes and resources (`.tscn`, `.tres`)
 
-- 文件本身只统计总行数，分别列为 Scene 与 Resource，不计入代码总量。
-- 内嵌代码提取后交给对应计数器：
-  - `[sub_resource type="GDScript" ...]` 的 `script/source` → `GDScript (embedded)`。
-  - `[sub_resource type="Shader" ...]` 的 `code` → `Shader (embedded)`。
-  - `[gd_resource type="Shader" ...]` 的 `[resource]` 段 `code` → `Shader (embedded)`（主资源为 Shader 的 `.tres`）。
-- 字符串值支持真实换行与 `\n` 转义两种存储，`\"`、`\\` 等按 Godot 规则反转义。
-- `VisualShader` 资源只计数量，不计行数。
+- The files themselves only contribute a total line count, listed as Scene and Resource, and are not part of the code total.
+- Embedded code is extracted and passed to the matching counter:
+  - `script/source` in `[sub_resource type="GDScript" ...]` → `GDScript (embedded)`.
+  - `code` in `[sub_resource type="Shader" ...]` → `Shader (embedded)`.
+  - `code` in the `[resource]` section of `[gd_resource type="Shader" ...]` → `Shader (embedded)` (a `.tres` whose main resource is a Shader).
+- String values stored with real newlines or with `\n` escapes are both supported; `\"`, `\\` and other escapes are unescaped following Godot's rules.
+- `VisualShader` resources are only counted, not line-counted.
 
-## 进阶统计（`--stats`）
+## Advanced statistics (`--stats`)
 
-默认表格与其它输出不变，以下内容只在 `--stats` 视图出现。内嵌代码一并计入，路径用 `文件::id`；`--exclude-dir`、`--exclude-addons` 同样生效；最长列表条数由 `--top` 控制（默认 10）。
+The default table and other outputs are unchanged; the following only appears in the `--stats` view. Embedded code is included, with `file::id` paths. `--exclude-dir` and `--exclude-addons` apply as usual. The length of the "longest" lists is controlled by `--top` (default 10).
 
-- **注释分析**：按语言给出注释行数、疑似"被注释掉的代码"行数及占比。
-- **GDScript 结构**：`func`（含 `static func`，不含匿名 `func(...)`）、`signal`、`class_name`、`@export`（含 `@export_range` 等变体）数量。
-- **最长文件**：代码行数最多的文件前 N 个。
-- **最长函数**：GDScript 函数按长度（从 `func` 行到函数体结束的代码行数，以缩进判断结束，空行与注释行不计入长度）排序，输出 `路径:行号 函数名 长度`。
+- **Comment analysis**: per language, the number of comment lines, the number of suspected "commented-out code" lines, and their ratio.
+- **GDScript structure**: counts of `func` (including `static func`, excluding anonymous `func(...)`), `signal`, `class_name` and `@export` (including variants such as `@export_range`).
+- **Longest files**: the top N files by code lines.
+- **Longest functions**: GDScript functions sorted by length (code lines from the `func` line to the end of the body, determined by indentation; blank and comment lines are not counted), shown as `path:line name length`.
 
-### 疑似被注释掉的代码（启发式估算）
+### Suspected commented-out code (heuristic estimate)
 
-**这是估算，不是精确判断。** 只考察普通注释行（不含文档注释、`#region`/`#endregion`）。去掉注释符号与首尾空白后：
+**This is an estimate, not an exact judgement.** Only plain comment lines are considered (not doc comments or `#region` / `#endregion`). After removing the comment marker and surrounding whitespace:
 
-- 含中文（CJK）字符的注释一律不算。
-- 以 `TODO`、`FIXME`、`NOTE`、`HACK` 开头的不算。
-- GDScript 满足以下任一即视为疑似：以 `func`、`var`、`const`、`if`、`elif`、`else`、`for`、`while`、`match`、`return`、`await`、`pass`、`extends`、`class_name`、`signal`、`@export`、`@onready` 开头；或以 `)` / `:` 结尾；或包含 `" = "`。
-- Shader 满足以下任一即视为疑似：以 `uniform`、`void`、`float`、`int`、`vec2`、`vec3`、`vec4`、`if`、`return` 开头；或以 `;` 结尾。
+- Comments containing CJK characters never count.
+- Comments starting with `TODO`, `FIXME`, `NOTE` or `HACK` do not count.
+- GDScript: suspected if it starts with `func`, `var`, `const`, `if`, `elif`, `else`, `for`, `while`, `match`, `return`, `await`, `pass`, `extends`, `class_name`, `signal`, `@export` or `@onready`; or ends with `)` / `:`; or contains `" = "`.
+- Shader: suspected if it starts with `uniform`, `void`, `float`, `int`, `vec2`, `vec3`, `vec4`, `if` or `return`; or ends with `;`.
 
-## 与 scc 的差异
+## Differences from scc
 
 ### GDScript
 
-以 `D:\WindupWonderland\src` 为样本（115 个 `.gd` 文件）：
+Sample: `D:\WindupWonderland\src` (115 `.gd` files):
 
-| 指标 | gdloc | scc |
+| Metric | gdloc | scc |
 |---|---|---|
 | Files | 115 | 115 |
 | Lines | 24,927 | 24,927 |
@@ -174,43 +196,43 @@ gdloc [路径] [选项]
 | Comments | 2,263 | 2,263 |
 | Blanks | 2,992 | 2,988 |
 
-差异仅来自 `addons/ww_water/baker/river_baker.gd` 的第 75、78、80、1120 行：这些是多行字符串（`"""..."""`）内部的纯空白行。gdloc 按"只含空白字符即空行"（含多行字符串内部）计为空行，scc 把字符串内部的行一律计为代码。gdloc 的行为与 AGENTS.md 4.1 一致。
+The only difference comes from lines 75, 78, 80 and 1120 of `addons/ww_water/baker/river_baker.gd`: whitespace-only lines inside a triple-quoted string (`"""..."""`). gdloc counts any whitespace-only line as blank, including inside multi-line strings, while scc counts every line inside a string as code. gdloc's behavior follows the general rule above.
 
-另外两个项目 GDScript 完全一致：
+GDScript results match exactly on two other projects:
 
-| 项目 | Files | Lines | Code | Comments | Blanks |
+| Project | Files | Lines | Code | Comments | Blanks |
 |---|---|---|---|---|---|
 | `D:\Godot\astral-mason` | 25 | 4,511 | 2,371 | 1,196 | 944 |
 | `D:\Godot\flipped-sky` | 21 | 2,308 | 1,002 | 842 | 464 |
 
 ### Shader
 
-以 `D:\WindupWonderland\src` 为样本（17 个 `.gdshader` / `.gdshaderinc` 文件，目录内无 `.glsl`）：
+Sample: `D:\WindupWonderland\src` (17 `.gdshader` / `.gdshaderinc` files, no `.glsl`):
 
-| 项目 | Files | Lines | Code | Comments | Blanks |
+| Project | Files | Lines | Code | Comments | Blanks |
 |---|---|---|---|---|---|
 | `D:\WindupWonderland\src` | 17 | 1,358 | 891 | 287 | 180 |
 | `D:\Godot\astral-mason` | 3 | 247 | 130 | 67 | 50 |
 | `D:\Godot\flipped-sky` | 0 | 0 | 0 | 0 | 0 |
 
-gdloc 的 Shader 组与 scc 的 GLSL 组逐文件对比 0 差异。scc 的 GLSL 组恰好只包含 `.gdshader` / `.gdshaderinc`；本机 scc 3.7.0 不识别该扩展名，对比时把样本复制到临时目录改名为 `.glsl` 交给 scc 解析。三个项目均无原生 `.glsl`。
+gdloc's Shader group matches scc's GLSL group with zero per-file differences. scc's GLSL group contains exactly the `.gdshader` / `.gdshaderinc` files; the local scc 3.7.0 does not recognize these extensions, so for the comparison the samples were copied to a temporary directory and renamed to `.glsl`. None of the three projects contain native `.glsl` files.
 
 ### Scene / Resource
 
-scc 的 "Godot Scene" **只统计 `.tscn`**（Windup 有 12 个 `.tres` 但未计入）。对比 Files 与 Lines：
+scc's "Godot Scene" **only counts `.tscn`** (Windup has 12 `.tres` files that it does not count). Files and Lines compared:
 
-| 项目 | gdloc Scene Files | scc Godot Scene Files | gdloc Scene Lines | scc Lines |
+| Project | gdloc Scene Files | scc Godot Scene Files | gdloc Scene Lines | scc Lines |
 |---|---|---|---|---|
 | `D:\WindupWonderland\src` | 35 | 35 | 3,210 | 3,210 |
 | `D:\Godot\astral-mason` | 19 | 19 | 4,657 | 4,657 |
 | `D:\Godot\flipped-sky` | 15 | 15 | 3,254 | 3,254 |
 
-`.tscn` 的 Files 与 Lines 完全一致。`.tres` 没有对应的 scc 组（scc 不计入 Godot Scene），gdloc 单独列为 Resource：Windup `12 / 187`，另两个项目为 0。三个真实项目均无内嵌 GDScript / Shader（`script/source` 与 `type="Shader"` 命中数为 0），故表格中无 `(embedded)` 行。
+`.tscn` Files and Lines match exactly. `.tres` has no scc counterpart (scc does not count it as Godot Scene); gdloc lists it separately as Resource: Windup `12 / 187`, 0 for the other two. None of the three projects contain embedded GDScript / Shader (`script/source` and `type="Shader"` have zero matches), so no `(embedded)` rows appear.
 
-## 发布
+## Releasing
 
-推送 `v*` 形式的 tag（如 `v0.1.0`）后，GitHub Actions 用 GoReleaser 编译 Windows / macOS / Linux 的 amd64 与 arm64 版本并发布到 Releases，同时把 Scoop manifest 推送到 [scoop-bucket](https://github.com/qwqzhanqwq/scoop-bucket)（需要仓库 secret `SCOOP_BUCKET_TOKEN`），配置见 `.goreleaser.yaml` 与 `.github/workflows/release.yml`。
+Pushing a `v*` tag (e.g. `v0.1.0`) makes GitHub Actions run GoReleaser, which builds amd64 and arm64 binaries for Windows / macOS / Linux, publishes them to Releases, and pushes the Scoop manifest to [scoop-bucket](https://github.com/qwqzhanqwq/scoop-bucket) (requires the repository secret `SCOOP_BUCKET_TOKEN`). See `.goreleaser.yaml` and `.github/workflows/release.yml`.
 
-## 许可证
+## License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT, see [LICENSE](LICENSE).

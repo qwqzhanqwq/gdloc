@@ -38,6 +38,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - README.zh-CN.md
 
 # 发布后把 manifest 推送到 Scoop bucket 仓库，用户通过 scoop bucket add 获取。
 scoops:
