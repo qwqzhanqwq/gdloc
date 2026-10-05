@@ -1,122 +1,130 @@
 // Command gdloc 是 Godot 4 项目代码行数统计工具的入口。
-// 当前为临时输出：目录遍历 + 文件分类 + GDScript 汇总，阶段 3 会替换为正式表格。
 package main
 
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
-	"gdloc/internal/counter"
+	"gdloc/internal/godot"
+	"gdloc/internal/report"
 	"gdloc/internal/scan"
 )
 
 // version 默认版本号，可通过 -ldflags "-X main.version=..." 覆盖。
 var version = "0.0.1-dev"
 
-// groupOrder 是临时输出的分组顺序。
-var groupOrder = []scan.FileType{
-	scan.TypeGDScript,
-	scan.TypeShader,
-	scan.TypeCSharp,
-	scan.TypeScene,
-	scan.TypeResource,
-}
-
 func main() {
-	fs := flag.NewFlagSet("gdloc", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	showVersion := fs.Bool("version", false, "print version and exit")
-	// 先手动识别 --version，使其与路径参数顺序无关（flag 遇到位置参数后会停止解析）。
-	for _, a := range os.Args[1:] {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(argv []string, stdout, stderr io.Writer) int {
+	// --version 与位置参数顺序无关，先单独识别。
+	for _, a := range argv {
 		if a == "--version" || a == "-version" {
-			*showVersion = true
-			fmt.Printf("gdloc %s\n", version)
-			return
+			fmt.Fprintf(stdout, "gdloc %s\n", version)
+			return 0
 		}
 	}
-	if err := fs.Parse(os.Args[1:]); err != nil {
-		if err == flag.ErrHelp {
-			os.Exit(0)
+
+	fs := flag.NewFlagSet("gdloc", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var (
+		byFile     bool
+		sortKey    string
+		top        int
+		jsonOut    bool
+		excludeDir string
+		noIgnore   bool
+	)
+	fs.BoolVar(&byFile, "by-file", false, "list one row per file")
+	fs.StringVar(&sortKey, "sort", "code", "sort key: code|comments|blanks|lines|files")
+	fs.IntVar(&top, "top", 0, "show only the first N rows")
+	fs.BoolVar(&jsonOut, "json", false, "output JSON")
+	fs.StringVar(&excludeDir, "exclude-dir", "", "comma-separated directory names to exclude")
+	fs.BoolVar(&noIgnore, "no-ignore", false, "do not read .gitignore (not yet implemented)")
+	fs.Usage = func() {
+		fmt.Fprintf(stderr, "Usage: gdloc [path] [options]\n\nOptions:\n")
+		fs.PrintDefaults()
+	}
+
+	// flag 会在首个位置参数处停止解析，这里循环解析以支持参数与路径任意顺序。
+	var positionals []string
+	args := argv
+	for {
+		if err := fs.Parse(args); err != nil {
+			if err == flag.ErrHelp {
+				return 0
+			}
+			return 1
 		}
-		// flag 已向 stderr 输出具体错误，这里按约定统一退出码 1。
-		os.Exit(1)
+		rest := fs.Args()
+		if len(rest) == 0 {
+			break
+		}
+		positionals = append(positionals, rest[0])
+		args = rest[1:]
 	}
-	if *showVersion {
-		fmt.Printf("gdloc %s\n", version)
-		return
-	}
-	args := fs.Args()
-	if len(args) > 1 {
-		fmt.Fprintln(os.Stderr, "error: too many arguments")
+
+	if len(positionals) > 1 {
+		fmt.Fprintln(stderr, "error: too many arguments")
 		fs.Usage()
-		os.Exit(1)
+		return 1
 	}
+	if !report.ValidSortKey(sortKey) {
+		fmt.Fprintf(stderr, "error: invalid --sort value %q\n", sortKey)
+		return 1
+	}
+	if top < 0 {
+		fmt.Fprintln(stderr, "error: --top must not be negative")
+		return 1
+	}
+
 	root := "."
-	if len(args) == 1 {
-		root = args[0]
+	if len(positionals) == 1 {
+		root = positionals[0]
 	}
-	info, err := os.Stat(root)
-	if err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "error: path %q does not exist or is not readable\n", root)
-		os.Exit(2)
-	}
-	entries, err := scan.Scan(root)
+	rootAbs, err := filepath.Abs(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: cannot scan %q: %v\n", root, err)
-		os.Exit(2)
+		fmt.Fprintf(stderr, "error: cannot resolve path %q: %v\n", root, err)
+		return 2
 	}
-	printGrouped(entries)
-	printLangSummary("GDScript", scan.TypeGDScript, root, entries, counter.CountGDScript)
-	printLangSummary("Shader", scan.TypeShader, root, entries, counter.CountShader)
+	info, err := os.Stat(rootAbs)
+	if err != nil || !info.IsDir() {
+		fmt.Fprintf(stderr, "error: path %q does not exist or is not readable\n", root)
+		return 2
+	}
+
+	entries, err := scan.Scan(rootAbs, scan.Options{ExcludeDirs: splitList(excludeDir)})
+	if err != nil {
+		fmt.Fprintf(stderr, "error: cannot scan %q: %v\n", root, err)
+		return 2
+	}
+
+	rep := report.Build(rootAbs, entries, stderr)
+	if name, ok := godot.FindProjectName(rootAbs); ok {
+		rep.ProjectName = name
+	}
+	rep.SortBy(sortKey)
+
+	if jsonOut {
+		report.WriteJSON(stdout, rep, byFile, top)
+	} else {
+		report.WriteTable(stdout, rep, byFile, top)
+	}
+	return 0
 }
 
-// printLangSummary 汇总某一类型文件的计数，读取失败只警告不中断。
-func printLangSummary(label string, t scan.FileType, root string, entries []scan.FileEntry, count func(string) counter.Result) {
-	var total counter.Result
-	files := 0
-	for _, e := range entries {
-		if e.Type != t {
-			continue
-		}
-		files++
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(e.Path)))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: cannot read %q: %v\n", e.Path, err)
-			continue
-		}
-		r := count(string(data))
-		total.Lines += r.Lines
-		total.Code += r.Code
-		total.Comments += r.Comments
-		total.Doc += r.Doc
-		total.Blanks += r.Blanks
-	}
-	fmt.Printf("%s summary: files=%d lines=%d code=%d comments=%d doc=%d blanks=%d\n",
-		label, files, total.Lines, total.Code, total.Comments, total.Doc, total.Blanks)
-}
-
-// printGrouped 按类型分组列出识别到的文件，末尾输出未识别文件数。
-func printGrouped(entries []scan.FileEntry) {
-	groups := make(map[scan.FileType][]string, len(groupOrder))
-	unknown := 0
-	for _, e := range entries {
-		if e.Type == scan.TypeUnknown {
-			unknown++
-			continue
-		}
-		groups[e.Type] = append(groups[e.Type], e.Path)
-	}
-	for _, t := range groupOrder {
-		files := groups[t]
-		if len(files) == 0 {
-			continue
-		}
-		fmt.Printf("%s (%d files):\n", t, len(files))
-		for _, p := range files {
-			fmt.Printf("  %s\n", p)
+// splitList 拆分逗号分隔的参数，去掉空白与空项。
+func splitList(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
 		}
 	}
-	fmt.Printf("Unrecognized files: %d\n", unknown)
+	return out
 }

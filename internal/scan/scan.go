@@ -3,6 +3,7 @@ package scan
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -19,6 +20,12 @@ const (
 	TypeResource FileType = "Resource"
 	TypeUnknown  FileType = "Unknown"
 )
+
+// Options 控制遍历时的排除行为。
+type Options struct {
+	// ExcludeDirs 是按目录名匹配的排除列表，任意层级命中即跳过。
+	ExcludeDirs []string
+}
 
 // FileEntry 是一条分类结果，Path 为相对根目录的路径，统一用 / 分隔。
 type FileEntry struct {
@@ -45,17 +52,30 @@ func Classify(name string) FileType {
 }
 
 // Scan 递归遍历 root，返回全部分类结果（含未识别文件）。
-// 跳过所有以 . 开头的目录（覆盖 .godot/、.git/）。
+// 跳过所有以 . 开头的目录（覆盖 .godot/、.git/）、包含 .gdignore 的目录，以及
+// opts.ExcludeDirs 命中的目录；根目录本身不参与跳过判定。
 // 返回的相对路径统一用 / 分隔，并按路径排序，保证输出稳定。
-func Scan(root string) ([]FileEntry, error) {
+func Scan(root string, opts Options) ([]FileEntry, error) {
+	exclude := make(map[string]bool, len(opts.ExcludeDirs))
+	for _, name := range opts.ExcludeDirs {
+		if name != "" {
+			exclude[name] = true
+		}
+	}
+
 	var out []FileEntry
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.IsDir() {
-			// 根目录本身不跳过，只跳过其下的点目录。
-			if path != root && strings.HasPrefix(d.Name(), ".") {
+			if path == root {
+				return nil
+			}
+			if strings.HasPrefix(d.Name(), ".") || exclude[d.Name()] {
+				return filepath.SkipDir
+			}
+			if _, statErr := os.Stat(filepath.Join(path, ".gdignore")); statErr == nil {
 				return filepath.SkipDir
 			}
 			return nil

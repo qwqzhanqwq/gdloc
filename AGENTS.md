@@ -125,7 +125,7 @@ gdloc [路径] [选项]
 --by-addon           按插件汇总，插件之外的部分列为 "(project)"
 --exclude-addons     不统计 addons/ 目录
 --exclude-dir a,b    额外排除目录
---sort <列>          code | comments | blanks | lines | files | complexity，默认 code
+--sort <列>          code | comments | blanks | lines | files，默认 code
 --top N              只显示前 N 行
 --json               以 JSON 输出（字段名使用英文 snake_case）
 --no-ignore          不读取 .gitignore
@@ -148,7 +148,7 @@ gdloc [路径] [选项]
 | 0 | 搭建骨架：go.mod、目录结构、`--version`、能遍历目录并按扩展名分类 | 能列出被识别的文件清单 |
 | 1 | GDScript 计数器 | 4.2 节每条规则都有测试用例且通过 |
 | 2 | Shader 计数器 | 4.3 节每条规则都有测试用例且通过 |
-| 3 | 表格输出、默认排除、`.gdignore`、`.gitignore`、`--by-file`、`--sort`、`--top`、`--json` | 在真实项目上运行，与 scc 结果对比，差异全部可解释 |
+| 3 | 表格输出、默认排除、`.gdignore`、`.gitignore`、`--by-file`、`--sort`、`--top`、`--json`、`--exclude-dir`、project.godot 项目名识别 | 在真实项目上运行，与 scc 结果对比，差异全部可解释 |
 | 4 | tscn/tres 统计 + 内嵌 GDScript/Shader 提取 | 用真实样本测试通过 |
 | 5 | 插件识别、`--by-addon`、`--by-dir`、`--exclude-addons` | 在含多个插件的项目上验证 |
 | 6 | 进阶统计：疑似"被注释掉的代码"（启发式，单独一列，标明为估算）、`func`/`signal`/`class_name`/`@export` 数量、最长文件和最长函数排行 | 启发式规则写进 README 并有测试 |
