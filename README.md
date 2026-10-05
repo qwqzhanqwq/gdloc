@@ -6,6 +6,15 @@ Godot 4 项目代码行数统计工具（命令行，用 Go 编写）。
 
 **下载可执行文件**：在 [Releases](https://github.com/qwqzhanqwq/gdloc/releases) 下载对应平台的压缩包（Windows 为 `.zip`，macOS / Linux 为 `.tar.gz`），解压后把 `gdloc` 放到 `PATH` 中的目录。
 
+**Scoop（Windows）**：
+
+```powershell
+scoop bucket add gdloc https://github.com/qwqzhanqwq/scoop-bucket
+scoop install gdloc
+```
+
+升级用 `scoop update gdloc`。
+
 **用 Go 安装**（需要 Go 1.25+）：
 
 ```sh
@@ -200,7 +209,7 @@ scc 的 "Godot Scene" **只统计 `.tscn`**（Windup 有 12 个 `.tres` 但未�
 
 ## 发布
 
-推送 `v*` 形式的 tag（如 `v0.1.0`）后，GitHub Actions 用 GoReleaser 编译 Windows / macOS / Linux 的 amd64 与 arm64 版本并发布到 Releases，配置见 `.goreleaser.yaml` 与 `.github/workflows/release.yml`。
+推送 `v*` 形式的 tag（如 `v0.1.0`）后，GitHub Actions 用 GoReleaser 编译 Windows / macOS / Linux 的 amd64 与 arm64 版本并发布到 Releases，同时把 Scoop manifest 推送到 [scoop-bucket](https://github.com/qwqzhanqwq/scoop-bucket)（需要仓库 secret `SCOOP_BUCKET_TOKEN`），配置见 `.goreleaser.yaml` 与 `.github/workflows/release.yml`。
 
 ## 许可证
 

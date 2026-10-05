@@ -39,6 +39,7 @@
 - 发布由 GoReleaser 完成：推送 `v*` tag 触发 `.github/workflows/release.yml`，产出 Windows / macOS / Linux 的 amd64 与 arm64 版本。Windows 包必须是 zip（Scoop、winget 只接受 zip）。
 - 版本号通过 `-ldflags "-X main.version=..."` 注入；`go install ...@vX.Y.Z` 安装的版本从模块信息读取。不要在代码里手写版本号。
 - 打 tag、推送、创建 GitHub 仓库或 token、配置 Actions secrets 都需要用户亲自操作或明确同意，agent 不自行执行。
+- Scoop：manifest 由 GoReleaser 的 `scoops` 推送到 `qwqzhanqwq/scoop-bucket` 的 `bucket/` 目录，凭证为 gdloc 仓库的 Actions secret `SCOOP_BUCKET_TOKEN`（只授权 scoop-bucket 的 Contents 读写）。不要手动编辑 bucket 里的 manifest。
 - 包管理器渠道按顺序推进：GitHub Release + `go install` → Scoop bucket → Homebrew tap → winget。未经用户确认不提前配置后续渠道。
 - 修改发布配置后，本机装有 goreleaser 时运行 `goreleaser check` 和 `goreleaser release --snapshot --clean` 验证；没有装就在报告中说明未验证。
 

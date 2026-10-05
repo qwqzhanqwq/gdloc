@@ -39,6 +39,23 @@ archives:
       - LICENSE
       - README.md
 
+# 发布后把 manifest 推送到 Scoop bucket 仓库，用户通过 scoop bucket add 获取。
+scoops:
+  - name: gdloc
+    repository:
+      owner: qwqzhanqwq
+      name: scoop-bucket
+      # 自带的 GITHUB_TOKEN 只能写本仓库，跨仓库推送需要单独的 token。
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    directory: bucket
+    homepage: https://github.com/qwqzhanqwq/gdloc
+    description: Line counter for Godot 4 projects (GDScript, shaders, scenes).
+    license: MIT
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "gdloc {{ .Tag }}"
+
 checksum:
   name_template: checksums.txt
 
