@@ -1,12 +1,14 @@
 // Command gdloc 是 Godot 4 项目代码行数统计工具的入口。
-// 阶段 0 只做目录遍历与文件分类展示，不做任何计数逻辑。
+// 当前为临时输出：目录遍历 + 文件分类 + GDScript 汇总，阶段 3 会替换为正式表格。
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"gdloc/internal/counter"
 	"gdloc/internal/scan"
 )
 
@@ -66,6 +68,32 @@ func main() {
 		os.Exit(2)
 	}
 	printGrouped(entries)
+	printGDScriptSummary(root, entries)
+}
+
+// printGDScriptSummary 统计并输出 GDScript 汇总，读取失败只警告不中断。
+func printGDScriptSummary(root string, entries []scan.FileEntry) {
+	var total counter.Result
+	files := 0
+	for _, e := range entries {
+		if e.Type != scan.TypeGDScript {
+			continue
+		}
+		files++
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(e.Path)))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: cannot read %q: %v\n", e.Path, err)
+			continue
+		}
+		r := counter.CountGDScript(string(data))
+		total.Lines += r.Lines
+		total.Code += r.Code
+		total.Comments += r.Comments
+		total.Doc += r.Doc
+		total.Blanks += r.Blanks
+	}
+	fmt.Printf("GDScript summary: files=%d lines=%d code=%d comments=%d doc=%d blanks=%d\n",
+		files, total.Lines, total.Code, total.Comments, total.Doc, total.Blanks)
 }
 
 // printGrouped 按类型分组列出识别到的文件，末尾输出未识别文件数。
