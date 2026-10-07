@@ -61,10 +61,11 @@ gdloc/
 ├── internal/counter/         # 各语言的逐行计数器（GDScript、Shader、C#）+ 公共结果类型
 ├── internal/godot/           # Godot 专属解析：project.godot、plugin.cfg、tscn/tres 内嵌代码提取
 ├── internal/report/          # 结果汇总、排序、表格输出、JSON 输出
+├── internal/history/         # 阶段 8：读取 git 历史，按天/周统计新增与删除
 └── testdata/                 # 测试用的样例文件和期望结果
 ```
 
-- 模块之间单向依赖：`cmd` → `report`/`scan`/`godot`/`counter`；`counter` 不依赖其他内部包。
+- 模块之间单向依赖：`cmd` → `report`/`scan`/`godot`/`counter`/`history`；`history` 只依赖 `counter`/`godot`/`scan`；`counter` 不依赖其他内部包。
 - 计数器只接收"文本内容"，不关心文件来自磁盘还是从 tscn 里提取出来的。这样内嵌代码可以复用同一个计数器。
 - 单个源文件尽量不超过 300 行，超过就拆分。
 
@@ -118,6 +119,28 @@ gdloc/
 - `VisualShader` 资源只计数量，不计行数。
 - `.import`、`.uid`、二进制资源（图片、音频、模型、`.res`、`.scn`）不统计。
 
+### 4.7 历史增量统计（`--daily` / `--weekly`，阶段 8）
+
+**数据来源**
+- 只读取 git 历史。通过 `os/exec` 调用系统 `git`，不引入 go-git 等第三方库。
+- 只允许只读命令（`log`、`diff-tree`、`diff`、`cat-file --batch`、`rev-parse` 等），且全部加 `--no-optional-locks`。禁止 `checkout`、`stash`、`reset` 等任何会改动工作区、索引或引用的命令。
+- 扫描根目录不在 git 仓库内，或系统找不到 `git` → 错误信息输出到 stderr，退出码 2。
+
+**统计口径**
+- 范围：HEAD 可达的**非合并提交**，每个提交与其**第一个父提交**比较；根提交与空树比较。合并提交跳过，不计入 Commits。
+- 日期：使用**作者日期**（author date），按**本地时区**分组。按提交逐个归入日期桶，因此历史中日期不单调也不影响结果。
+- 周：ISO 周，**周一开始**。
+- 新增/删除的分类：对文件改动前后两个版本分别用 4.2 / 4.3 的计数器做逐行分类，再按 `git diff -U0`（或等价的逐行 diff）给出的行号，取新增行在新版本中的分类、删除行在旧版本中的分类，分别累计 Code / Comments / Blanks（Doc 不单列）。这样多行字符串、块注释等跨行结构的判定与总量统计完全一致。
+- 净变化 = 新增 − 删除。
+- Commits 列：该时段内、至少改动了一个"扫描根下且未被排除的 `.gd` / `.gdshader` / `.gdshaderinc` / `.tscn` / `.tres`"文件的非合并提交数。
+- 时段末的 Code 总量：以 HEAD 树按同一口径统计的代码总量为基准，减去作者日期晚于该时段结束的提交的净变化得到（不包含未提交改动）。
+- 内嵌代码：`.tscn` / `.tres` 改动时，对前后两个版本分别提取内嵌块（同 4.5），按块 id 配对后同样做逐行 diff；新增的块全部计为新增，消失的块全部计为删除。计入对应语言（GDScript / Shader）。Scene / Resource 文件本身的行数不参与。
+- 重命名：按 git 的重命名检测处理，只统计内容差异，不把整个文件算作删除+新增。
+- 路径范围：只统计位于扫描根目录下的文件（扫描根可以是仓库的子目录，例如 `src/`）。路径前缀需正确换算。
+- 排除规则：以 `.` 开头的目录、`--exclude-dir`、`--exclude-addons` 按文件**在该提交中的路径**判断；`.gdignore` 按**当前工作区**判断（不回溯历史中的 `.gdignore`）；`.gitignore` 无需处理（被忽略的文件不在历史中）。
+- 未提交改动：工作区（含暂存区）相对 HEAD 的变化单独列为 `(uncommitted)` 一行，不并入任何日期；未跟踪的新文件也计入（作为全量新增），但要遵守上面的排除规则和 `.gitignore`。
+- 暂不支持按作者过滤（`--author`），工具面向独立开发者。
+
 规则有任何不明确的地方，**先问用户，不要自行决定**。规则一旦改变，同步更新 README 的"计数规则"一节（中英两版）。
 
 ---
@@ -150,12 +173,23 @@ gdloc [路径] [选项]
 --top N              只显示前 N 行
 --json               以 JSON 输出（字段名使用英文 snake_case）
 --no-ignore          不读取 .gitignore
+--daily              按天统计新增/删除（阶段 8），默认最近 14 天
+--weekly             按 ISO 周统计新增/删除（阶段 8），默认最近 12 周
+--since YYYY-MM-DD   历史统计的起始日期（含），需配合 --daily / --weekly
+--until YYYY-MM-DD   历史统计的结束日期（含），需配合 --daily / --weekly
 --version
 ```
 
 - 默认输出：按语言汇总的表格，列为 Language / Files / Lines / Code / Comments / Doc / Blanks，末尾一行 Total。
 - Total 只汇总代码类语言；Scene/Resource 单独显示在分隔线下方。
-- 退出码：0 正常；1 参数错误；2 路径不存在或不可读。
+- 历史统计输出（`--daily` / `--weekly`，规则见 4.7）：
+  - 列为 Date（`--weekly` 时为 Week，显示为该周周一的日期）/ Commits / +Code / -Code / Net / +Comments / -Comments / +Blanks / -Blanks / Code，其中最后一列 Code 是该时段结束时的代码总量。
+  - 范围内没有提交的日期/周也显示一行，数值为 0，不跳过。按时间升序排列。
+  - 末尾依次为 `(uncommitted)` 一行（无未提交改动时数值为 0）和 Total 一行（汇总整个时间范围，不含 `(uncommitted)`）。不显示日均/周均。
+  - `--since` / `--until` 覆盖默认的 14 天 / 12 周；只给其中一个时，另一端分别取"最早提交"/"今天"。日期格式错误或 since 晚于 until → 退出码 1。
+  - `--daily` 与 `--weekly` 互斥；二者都不能与 `--by-file` / `--by-dir` / `--by-addon` / `--stats` 同时使用；单独给 `--since` / `--until` 而没有 `--daily` / `--weekly` 也是参数错误。可与 `--exclude-dir`、`--exclude-addons`、`--json`、`--top`（保留最近的 N 行）同时使用。
+  - JSON：字段使用 snake_case，至少包含时间段列表、`uncommitted`、`total`。
+- 退出码：0 正常；1 参数错误；2 路径不存在或不可读，或历史统计时不在 git 仓库内 / 找不到 git。
 - 新增或修改参数时，同步更新 README（中英两版）和本节。
 
 ---
@@ -174,6 +208,9 @@ gdloc [路径] [选项]
 | 5 | 插件识别、`--by-addon`、`--by-dir`、`--exclude-addons` | 在含多个插件的项目上验证 |
 | 6 | 进阶统计：疑似"被注释掉的代码"（启发式，单独一列，标明为估算）、`func`/`signal`/`class_name`/`@export` 数量、最长文件和最长函数排行 | 启发式规则写进 README 并有测试 |
 | 7 | C# 支持（可选） | 4.4 节规则有测试且通过 |
+| 8 | 历史增量统计：`--daily`、`--weekly`、`--since`、`--until`、`(uncommitted)` 行（规则见 4.7、6） | 4.7 节每条规则都有测试（测试中现场创建临时 git 仓库并固定作者日期）；在用户的真实 git 项目上运行，结果能用 `git log` 抽查解释 |
+
+阶段 7 为可选，经用户同意暂时跳过，阶段 8 可以在其之前进行。
 
 ---
 

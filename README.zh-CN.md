@@ -19,6 +19,7 @@ Resource     12     187
 
 - 支持 GDScript（`.gd`）与 Godot Shader（`.gdshader` / `.gdshaderinc`），区分代码、注释、文档注释（`##`、`/** */`）和空行。
 - 按文件、顶层目录或插件分组；`--stats` 给出函数/信号数量、最长文件和最长函数。
+- 从 git 历史统计每天/每个 ISO 周的新增与删除（`--daily` / `--weekly`），并单独给出 `(uncommitted)` 行；调用 git 时只用只读命令。
 - 只支持 Godot 4；不统计 C#（`.cs`），存在时会提示数量。
 - 对被扫描的项目只读，不联网。
 
@@ -69,13 +70,19 @@ gdloc [路径] [选项]
 | `--json` | 以 JSON 输出（字段名 snake_case） |
 | `--exclude-dir a,b` | 按目录名排除，任意层级命中即跳过 |
 | `--no-ignore` | 不读取 `.gitignore` |
+| `--daily` | 从 git 历史按天统计新增/删除（默认最近 14 天） |
+| `--weekly` | 按 ISO 周统计新增/删除，行标签为该周周一的日期（默认最近 12 周） |
+| `--since YYYY-MM-DD` | 历史统计的起始日期（含），需配合 `--daily` / `--weekly` |
+| `--until YYYY-MM-DD` | 历史统计的结束日期（含），需配合 `--daily` / `--weekly` |
 | `--version` | 显示版本 |
 
 `--by-file`、`--by-dir`、`--by-addon` 三者互斥，同时使用报错退出码 1；`--exclude-addons` 与 `--by-addon` 同用也报错；`--stats` 与这三个分组参数互斥。`--sort` 与 `--top` 对分组结果生效，Total 始终按全部计算。
 
+`--daily` 与 `--weekly` 也互斥，且不能与 `--by-file` / `--by-dir` / `--by-addon` / `--stats` 同用；单独给 `--since` / `--until` 而没有 `--daily` / `--weekly` 同样是参数错误（退出码 1）。历史统计可与 `--exclude-dir`、`--exclude-addons`、`--json`、`--top` 同用；`--sort` 与 `--no-ignore` 也能接受，但 `--sort` 不起作用（行始终按时间升序），`--no-ignore` 仍决定被 `.gitignore` 忽略的未跟踪文件是否计入 `(uncommitted)`。
+
 默认输出：按语言汇总的表格（Language / Files / Lines / Code / Comments / Doc / Blanks），末尾 Total 行。找到 `project.godot` 时，表格上方显示项目名与扫描根目录。`.tscn`/`.tres` 中提取出的内嵌代码单独列为 `GDScript (embedded)` / `Shader (embedded)`（Files 为含内嵌代码的文件数，内嵌块数量见 `--by-file` 与 JSON），并计入 Total。分隔线下方单独显示 Scene（`.tscn`）与 Resource（`.tres`）的 Files 和 Lines（不计入 Total）。存在 `.cs` 文件或 VisualShader 时，表格下方提示未统计数量。`--by-file` 时 `--sort files` 无意义，退回按 Lines 排序。
 
-退出码：`0` 正常；`1` 参数错误；`2` 路径不存在或不可读。
+退出码：`0` 正常；`1` 参数错误（含 `--since` / `--until` 格式错误、`--since` 晚于 `--until`）；`2` 路径不存在或不可读，或历史统计时不在 git 仓库内 / 找不到 `git`。
 
 ### JSON 结构
 
@@ -125,6 +132,61 @@ gdloc [路径] [选项]
 - `stats` 仅在 `--stats` 时出现，含注释分析（`comments` / `suspected` / `ratio`）、`structure`、`longest_files`（`path` / `language` / `code`）、`longest_functions`（`path` / `line` / `name` / `length`）。
 - `files` 仅在带 `--by-file` 时出现，内嵌块路径为 `文件::id`；`--top N` 会截断 `languages` / `addons` / `dirs` / `files` / `stats.longest_*` 数组，但 `total` 始终是全量。
 
+## 历史统计（`--daily` / `--weekly`）
+
+`--daily` 与 `--weekly` 直接从仓库的 git 历史给出各时段的新增与删除行数。使用它们需要 `PATH` 里有 `git`，且扫描根位于 git 工作区内；gdloc 只调用只读的 git 命令（一律加 `--no-optional-locks`），不会修改被扫描的仓库。
+
+```
+$ gdloc --daily
+Project: WindupWonderland
+Root:    D:\WindupWonderland\src
+Date           Commits   +Code  -Code     Net  +Comments  -Comments  +Blanks  -Blanks    Code
+2026-10-01           7   8,618     71   8,547      1,074         22    1,721        3   8,547
+2026-10-02           8   2,586    169   2,417        473         56      471        4  10,964
+2026-10-03           0       0      0       0          0          0        0        0  10,964
+...
+(uncommitted)        0       0      0       0          0          0        0        0  22,263
+Total               40  23,821  1,558  22,263      3,171        248    3,512       99  22,263
+```
+
+列为 Date（`--weekly` 时为 Week）/ Commits / +Code / -Code / Net / +Comments / -Comments / +Blanks / -Blanks / Code。行按时间升序；没有提交的时段也会显示一行（数值为 0），不跳过。末尾依次为 `(uncommitted)` 与 `Total`，不显示日均/周均。
+
+- **日期**：按提交的**作者日期**分组，使用本地时区。周为 ISO 周、周一为一周之始，行标签是该周周一的日期。提交逐个归入日期桶，因此历史里日期不单调也不会影响结果。
+- **Commits**：HEAD 可达、且至少改动了一个扫描根下被统计文件（`.gd`、`.gdshader`、`.gdshaderinc`、`.tscn`、`.tres`）的非合并提交数。合并提交整体跳过；其余提交与第一个父提交比较，根提交与空树比较。
+- **新增/删除**：改动前后两个版本都用与总量统计相同的计数器逐行分类，新增行取新版本的分类、删除行取旧版本的分类。这里 Doc 归入 Comments（没有单独的 Doc 列）。`Net` = `+Code` − `-Code`。
+- **Code 列**：该时段结束时的代码总量。它等于 HEAD 树按同一口径统计的总量减去作者日期晚于该时段末的所有提交的净变化，因此每周一行反映的是该周周日结束时的状态（不含未提交改动）。
+- **内嵌代码**：`.tscn` / `.tres` 改动时，前后两个版本分别提取内嵌块并按块 id 配对；块内做逐行 diff，新增的块全部算新增、消失的块全部算删除。Scene / Resource 文件本身的行数不计入代码。
+- **重命名**：使用 git 的重命名检测（`-M`），只统计内容差异。跨越扫描根或排除规则、以及改变文件类型的重命名按“整份删除 + 整份新增”处理，因为两个版本在口径下已不可比。
+- **范围**：只统计扫描根下的文件，扫描根可以是仓库的子目录（如 `src/`）。排除规则按文件**在该提交中的路径**判断：以 `.` 开头的目录、`--exclude-dir`、`--exclude-addons` 与 `.gdignore` 目录；`.gdignore` 按**当前工作区**判断，不回溯历史。已提交的文件无需处理 `.gitignore`。
+- **`(uncommitted)`**：工作区（含暂存区）相对 HEAD 的变化，外加未跟踪文件（整个文件算新增）。它单独成行，不并入任何日期。被 `.gitignore` 忽略的未跟踪文件默认跳过，加 `--no-ignore` 才计入。工作区文件与 blob 只差 CRLF 行尾时不算改动。这里的重命名只有在已暂存后才识别（git 在该处比较的是索引与 HEAD），只存在于工作区的重命名会显示为旧文件删除加一个未跟踪的新文件。
+- **范围默认值**：`--daily` 默认最近 14 天，`--weekly` 默认最近 12 个 ISO 周。`--since` / `--until`（`YYYY-MM-DD`，含当天，按本地时区解释）会覆盖默认值；只给其中一个时，另一端分别取最早提交（只给 `--until`）或今天（只给 `--since`）。
+- **`--top N`** 保留最近的 N 个时段；`(uncommitted)` 与 `Total` 始终显示，且 `Total` 始终覆盖整个范围。
+
+与 `git log --numstat` 对账：gdloc 求的是最小行差异，`git diff --minimal` 能逐行对上，而 git 默认的启发式在大段改写时可能多报几对增删。此外 gdloc 会对每一行分类，并统计 `.tscn` / `.tres` 里的内嵌代码，这两点 `--numstat` 都看不到；`.tscn` / `.tres` 文件自身的行数则从不计入。
+
+### 历史统计的 JSON
+
+```json
+{
+  "project_name": "WindupWonderland",
+  "root": "D:/WindupWonderland/src",
+  "mode": "daily",
+  "since": "2026-09-24",
+  "until": "2026-10-07",
+  "head_code": 22263,
+  "periods": [
+    {"date": "2026-10-01", "commits": 7, "added_code": 8618, "deleted_code": 71, "net_code": 8547, "added_comments": 1074, "deleted_comments": 22, "added_blanks": 1721, "deleted_blanks": 3, "code": 8547}
+  ],
+  "uncommitted": {"commits": 0, "added_code": 0, "deleted_code": 0, "net_code": 0, "added_comments": 0, "deleted_comments": 0, "added_blanks": 0, "deleted_blanks": 0, "code": 22263},
+  "total": {"commits": 40, "added_code": 23821, "deleted_code": 1558, "net_code": 22263, "added_comments": 3171, "deleted_comments": 248, "added_blanks": 3512, "deleted_blanks": 99, "code": 22263}
+}
+```
+
+- `mode` 为 `daily` 或 `weekly`；`date` 是当天日期，`weekly` 时是该 ISO 周的周一。
+- `uncommitted` 与 `total` 的字段与单个时段一致；`uncommitted` 的 `commits` 恒为 0，其 `code` 是当前工作区的代码总量（HEAD 总量加未提交净变化）。
+- `head_code` 是已提交的 HEAD 树的代码总量，`total.code` 是范围末端的总量；两者都不含未提交改动。
+- `--top N` 只截断 `periods`（保留最近的 N 个），`total` 始终是全量。
+
 ## 扫描与排除
 
 - 默认跳过 `.godot/`、`.git/` 等所有以 `.` 开头的目录，以及包含 `.gdignore` 的目录及其子树。
@@ -163,6 +225,8 @@ gdloc [路径] [选项]
   - `[gd_resource type="Shader" ...]` 的 `[resource]` 段 `code` → `Shader (embedded)`（主资源为 Shader 的 `.tres`）。
 - 字符串值支持真实换行与 `\n` 转义两种存储，`\"`、`\\` 等按 Godot 规则反转义。
 - `VisualShader` 资源只计数量，不计行数。
+
+历史统计（`--daily` / `--weekly`）对改动的前后两个版本都用上面这套规则分类，两个视图的口径因此保持一致；分桶、重命名与排除的处理见上文的《历史统计》一节。
 
 ## 进阶统计（`--stats`）
 

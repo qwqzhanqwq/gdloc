@@ -19,6 +19,7 @@ Resource     12     187
 
 - Counts GDScript (`.gd`) and Godot shaders (`.gdshader` / `.gdshaderinc`), separating code, comments, doc comments (`##`, `/** */`) and blank lines.
 - Groups results by file, top-level directory or plugin; `--stats` reports function/signal counts and the longest files and functions.
+- Reports added/removed lines per day or ISO week from git history (`--daily` / `--weekly`), with an `(uncommitted)` row. Git is only ever called with read-only commands.
 - Godot 4 only. C# (`.cs`) is not counted; if any `.cs` files exist, their number is shown as a note.
 - Read-only on the scanned project. No network access.
 
@@ -69,13 +70,19 @@ Options (may appear before or after the path):
 | `--json` | JSON output (snake_case field names) |
 | `--exclude-dir a,b` | Exclude directories by name, at any depth |
 | `--no-ignore` | Do not read `.gitignore` |
+| `--daily` | Added/removed lines per day from git history (default: last 14 days) |
+| `--weekly` | Added/removed lines per ISO week, rows labelled with that week's Monday (default: last 12 weeks) |
+| `--since YYYY-MM-DD` | First day of the history range, inclusive; requires `--daily` or `--weekly` |
+| `--until YYYY-MM-DD` | Last day of the history range, inclusive; requires `--daily` or `--weekly` |
 | `--version` | Print the version |
 
 `--by-file`, `--by-dir` and `--by-addon` are mutually exclusive; combining them is an error (exit code 1). Combining `--exclude-addons` with `--by-addon` is also an error, and `--stats` cannot be combined with any of the three grouping options. `--sort` and `--top` apply to the grouped rows; Total is always computed over everything.
 
+`--daily` and `--weekly` are mutually exclusive as well, cannot be combined with `--by-file` / `--by-dir` / `--by-addon` / `--stats`, and `--since` / `--until` without one of them is an error (exit code 1). In history mode they can be combined with `--exclude-dir`, `--exclude-addons`, `--json` and `--top`; `--sort` and `--no-ignore` are accepted but `--sort` has no effect (`--no-ignore` still decides whether ignored untracked files are part of the `(uncommitted)` row).
+
 Default output: a per-language table (Language / Files / Lines / Code / Comments / Doc / Blanks) ending with a Total row. When `project.godot` is found, the project name and scan root are printed above the table. Code extracted from `.tscn` / `.tres` files is listed separately as `GDScript (embedded)` / `Shader (embedded)` (Files is the number of files containing embedded code; the number of embedded blocks is available in `--by-file` and JSON) and is included in Total. Below the separator, Scene (`.tscn`) and Resource (`.tres`) show Files and Lines only and are not part of Total. If `.cs` files or VisualShader resources exist, a note below the table shows how many were not counted. With `--by-file`, `--sort files` is meaningless and falls back to sorting by Lines.
 
-Exit codes: `0` success; `1` invalid arguments; `2` path does not exist or is not readable.
+Exit codes: `0` success; `1` invalid arguments (including a malformed `--since` / `--until` and `--since` later than `--until`); `2` path does not exist or is not readable, or `--daily` / `--weekly` was used outside a git repository or without `git` on `PATH`.
 
 ### JSON format
 
@@ -125,6 +132,61 @@ Exit codes: `0` success; `1` invalid arguments; `2` path does not exist or is no
 - `stats` appears only with `--stats`: comment analysis (`comments` / `suspected` / `ratio`), `structure`, `longest_files` (`path` / `language` / `code`) and `longest_functions` (`path` / `line` / `name` / `length`).
 - `files` appears only with `--by-file`; embedded blocks use `file::id` paths. `--top N` truncates the `languages` / `addons` / `dirs` / `files` / `stats.longest_*` arrays, but `total` always covers everything.
 
+## History statistics (`--daily` / `--weekly`)
+
+`--daily` and `--weekly` show how many lines were added and removed over time, straight from the repository's git history. They need `git` on `PATH` and a scan root inside a git work tree; only read-only git commands are used (always with `--no-optional-locks`), so the scanned repository is never modified.
+
+```
+$ gdloc --daily
+Project: WindupWonderland
+Root:    D:\WindupWonderland\src
+Date           Commits   +Code  -Code     Net  +Comments  -Comments  +Blanks  -Blanks    Code
+2026-10-01           7   8,618     71   8,547      1,074         22    1,721        3   8,547
+2026-10-02           8   2,586    169   2,417        473         56      471        4  10,964
+2026-10-03           0       0      0       0          0          0        0        0  10,964
+...
+(uncommitted)        0       0      0       0          0          0        0        0  22,263
+Total               40  23,821  1,558  22,263      3,171        248    3,512       99  22,263
+```
+
+Columns are Date (Week for `--weekly`) / Commits / +Code / -Code / Net / +Comments / -Comments / +Blanks / -Blanks / Code. Rows are in ascending order and periods without commits are listed with zeros instead of being skipped. `(uncommitted)` and `Total` come last, and no averages are shown.
+
+- **Dates**: the *author date* of each commit, grouped in the local timezone. Weekly buckets are ISO weeks and start on Monday; the row is labelled with that Monday's date. Commits are bucketed one by one, so non-monotonic dates do not distort the result.
+- **Commits**: non-merge commits reachable from `HEAD` that changed at least one counted file (`.gd`, `.gdshader`, `.gdshaderinc`, `.tscn`, `.tres`) under the scan root. Merge commits are skipped entirely; every other commit is compared with its first parent, and a root commit with the empty tree.
+- **Added / removed**: both versions of a change are classified line by line with the same counters used for the totals; added lines take their class from the new version, removed lines from the old one. Doc comments are folded into Comments here (there is no separate Doc column). `Net` is `+Code` minus `-Code`.
+- **`Code` column**: the code total at the end of that period. It is the code in the `HEAD` tree under the same rules, minus the net change of every commit authored after the period ends, so a period always shows the state at its own end (a weekly row always shows Sunday's state). Uncommitted work is not included.
+- **Embedded code**: when a `.tscn` / `.tres` changes, embedded blocks are extracted from both versions and paired by block id; a changed block is diffed line by line, a new block counts as an addition and a removed block as a deletion. The scene/resource file's own lines never count as code.
+- **Renames**: git's rename detection (`-M`) is used, so a rename contributes only its content difference. A rename that crosses the scan root or the exclusion rules, or that changes the file type, is counted as a full deletion plus a full addition instead, since the two versions are not comparable under the rules.
+- **Scope**: only files under the scan root are counted, and the scan root may be a subdirectory of the repository (e.g. `src/`). The usual exclusions apply, evaluated on the path a file had in that commit: hidden directories, `--exclude-dir`, `--exclude-addons` and `.gdignore` directories — `.gdignore` is taken from the *current workspace*, it is never read from history. `.gitignore` needs no handling, since ignored files are not committed.
+- **`(uncommitted)`**: the working tree including the index, compared with `HEAD`, plus untracked files, which count as whole new files. It gets its own row and is never folded into a date. Untracked files ignored by `.gitignore` are skipped unless `--no-ignore` is given. A worktree file that differs from its blob only by CRLF line endings is not reported as changed. Renames are detected there only once they are staged (git compares the index with `HEAD`), so a rename that exists only in the working tree appears as a deletion of the old file plus an untracked new file.
+- **Ranges**: `--daily` defaults to the last 14 days and `--weekly` to the last 12 ISO weeks. `--since` / `--until` (`YYYY-MM-DD`, inclusive, interpreted in the local timezone) override that; if only one of them is given the other end is the earliest commit (`--until` alone) or today (`--since` alone).
+- **`--top N`** keeps the newest N periods; `(uncommitted)` and `Total` are always shown, and `Total` always covers the whole range.
+
+Reconciling with `git log --numstat`: gdloc computes a minimal line diff, which `git diff --minimal` matches line for line, while git's default heuristic can add a few redundant add/remove pairs on large rewrites. On top of that, gdloc classifies every line and also counts code embedded in scenes/resources, neither of which `--numstat` can show, and it never counts `.tscn` / `.tres` file lines.
+
+### History JSON
+
+```json
+{
+  "project_name": "WindupWonderland",
+  "root": "D:/WindupWonderland/src",
+  "mode": "daily",
+  "since": "2026-09-24",
+  "until": "2026-10-07",
+  "head_code": 22263,
+  "periods": [
+    {"date": "2026-10-01", "commits": 7, "added_code": 8618, "deleted_code": 71, "net_code": 8547, "added_comments": 1074, "deleted_comments": 22, "added_blanks": 1721, "deleted_blanks": 3, "code": 8547}
+  ],
+  "uncommitted": {"commits": 0, "added_code": 0, "deleted_code": 0, "net_code": 0, "added_comments": 0, "deleted_comments": 0, "added_blanks": 0, "deleted_blanks": 0, "code": 22263},
+  "total": {"commits": 40, "added_code": 23821, "deleted_code": 1558, "net_code": 22263, "added_comments": 3171, "deleted_comments": 248, "added_blanks": 3512, "deleted_blanks": 99, "code": 22263}
+}
+```
+
+- `mode` is `daily` or `weekly`; `date` is the day, or the Monday of the ISO week for `weekly`.
+- `uncommitted` and `total` use the same fields as a period; `commits` is always 0 for `uncommitted`, whose `code` is the current working tree total (the `HEAD` total plus the uncommitted net change).
+- `head_code` is the code total of the committed `HEAD` tree, and `total.code` is the total at the end of the range; both ignore uncommitted work.
+- `--top N` truncates `periods` to the newest N entries but never truncates `total`.
+
 ## Scanning and exclusions
 
 - Directories starting with `.` (such as `.godot/` and `.git/`) are skipped, as are directories containing a `.gdignore` file and everything below them.
@@ -163,6 +225,8 @@ Each line falls into exactly one category, in this order: whitespace only → bl
   - `code` in the `[resource]` section of `[gd_resource type="Shader" ...]` → `Shader (embedded)` (a `.tres` whose main resource is a Shader).
 - String values stored with real newlines or with `\n` escapes are both supported; `\"`, `\\` and other escapes are unescaped following Godot's rules.
 - `VisualShader` resources are only counted, not line-counted.
+
+History statistics (`--daily` / `--weekly`) classify both versions of every change with exactly these rules, so the two views stay consistent; how buckets, renames and exclusions are handled there is described in the History statistics section above.
 
 ## Advanced statistics (`--stats`)
 

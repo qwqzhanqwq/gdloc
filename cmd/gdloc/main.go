@@ -53,6 +53,10 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		jsonOut       bool
 		excludeDir    string
 		noIgnore      bool
+		daily         bool
+		weekly        bool
+		since         string
+		until         string
 	)
 	fs.BoolVar(&byFile, "by-file", false, "list one row per file")
 	fs.BoolVar(&byDir, "by-dir", false, "group by top-level directory")
@@ -64,6 +68,10 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.BoolVar(&jsonOut, "json", false, "output JSON")
 	fs.StringVar(&excludeDir, "exclude-dir", "", "comma-separated directory names to exclude")
 	fs.BoolVar(&noIgnore, "no-ignore", false, "do not read .gitignore")
+	fs.BoolVar(&daily, "daily", false, "count added/removed lines per day (default: last 14 days)")
+	fs.BoolVar(&weekly, "weekly", false, "count added/removed lines per ISO week (default: last 12 weeks)")
+	fs.StringVar(&since, "since", "", "start date of the history range, YYYY-MM-DD inclusive")
+	fs.StringVar(&until, "until", "", "end date of the history range, YYYY-MM-DD inclusive")
 	fs.Usage = func() {
 		fmt.Fprintf(stderr, "Usage: gdloc [path] [options]\n\nOptions:\n")
 		fs.PrintDefaults()
@@ -119,6 +127,29 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	historyView := daily || weekly
+	if daily && weekly {
+		fmt.Fprintln(stderr, "error: --daily and --weekly are mutually exclusive")
+		return 1
+	}
+	if !historyView && (since != "" || until != "") {
+		fmt.Fprintln(stderr, "error: --since and --until require --daily or --weekly")
+		return 1
+	}
+	if historyView && (modes > 0 || statsView) {
+		fmt.Fprintln(stderr, "error: --daily and --weekly cannot be combined with --by-file, --by-dir, --by-addon or --stats")
+		return 1
+	}
+	sinceDate, untilDate, err := parseRange(since, until)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	if !sinceDate.IsZero() && !untilDate.IsZero() && sinceDate.After(untilDate) {
+		fmt.Fprintf(stderr, "error: --since %s is later than --until %s\n", since, until)
+		return 1
+	}
+
 	root := "."
 	if len(positionals) == 1 {
 		root = positionals[0]
@@ -139,6 +170,21 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		projectRoot = rootAbs
 	}
 	addonsDir := filepath.Join(projectRoot, "addons")
+
+	if historyView {
+		return runHistory(historyArgs{
+			root:          rootAbs,
+			addonsDir:     addonsDir,
+			excludeDirs:   splitList(excludeDir),
+			excludeAddons: excludeAddons,
+			noIgnore:      noIgnore,
+			weekly:        weekly,
+			since:         sinceDate,
+			until:         untilDate,
+			jsonOut:       jsonOut,
+			top:           top,
+		}, stdout, stderr)
+	}
 
 	scanOpts := scan.Options{ExcludeDirs: splitList(excludeDir), NoIgnore: noIgnore}
 	if excludeAddons {
